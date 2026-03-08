@@ -1,0 +1,53 @@
+package com.example.library.dto;
+
+import lombok.Data;
+
+import javax.validation.constraints.Min;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
+
+/**
+ * 自习室修改请求参数
+ */
+@Data
+public class StudyRoomUpdateRequest {
+
+    /**
+     * 自习室ID
+     */
+    @NotNull(message = "自习室ID不能为空")
+    private Long id;
+
+    /**
+     * 自习室名称
+     */
+    @NotBlank(message = "自习室名称不能为空")
+    @Size(max = 100, message = "自习室名称长度不能超过100")
+    private String name;
+
+    /**
+     * 位置描述
+     */
+    @Size(max = 200, message = "位置描述长度不能超过200")
+    private String location;
+
+    /**
+     * 容量（座位数）
+     */
+    @NotNull(message = "容量不能为空")
+    @Min(value = 0, message = "容量不能为负数")
+    private Integer capacity;
+
+    /**
+     * 开放时间描述，如 08:00-22:00
+     */
+    @Size(max = 50, message = "开放时间长度不能超过50")
+    private String openTime;
+
+    /**
+     * 状态：1启用 0禁用
+     */
+    private Integer status;
+}
+

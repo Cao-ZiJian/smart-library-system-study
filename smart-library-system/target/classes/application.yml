@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: smart-library-system
+
+  profiles:
+    active: dev
+
+server:
+  port: 18080
+  servlet:
+    context-path: /api
+
+logging:
+  level:
+    root: info
+    com.example.library: debug
+
+jwt:
+  secret: "smart-library-system-secret-key-please-change"
+  expire-minutes: 120
+
+knife4j:
+  enable: true
+
