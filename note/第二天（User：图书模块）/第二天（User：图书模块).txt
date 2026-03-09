@@ -1,0 +1,1064 @@
+第二天（慎重看解释，正确性待商榷，冲突以纠正栏为准）（共两次纠正）：
+@Api(tags = "图书模块（用户端）")
+@RestController纳入spring的bean管理，不知具体作用
+@RequestMapping("/book")路径设置，由于apllication-dev配置路径打头都为/auth/book
+@Validated开启参数检测
+@RequiredArgsConstructor lombook的注释，生成构造方法，spring对其注入
+
+@ApiOperation("分页查询可借阅图书")
+@GetMapping("/page")路径/auth/book/page
+public Result<Page<BookVO>> page(@Valid BookPageRequest request) 
+前端输入的json数据，被打入到BookPageRequest类，封装为request
+@Valid 检测request是否符合BookPageRequest内规定的要求
+Page<BookVO> pageResult = bookService.pageAvailableBooks(request);调用接口实现类public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements BookService里的
+首先讲解
+@Service 进入springbean管理，不清楚作用
+@RequiredArgsConstructor正常DI
+public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements BookService
+继承ServiceImpl<BookMapper, Book>，该类实则为public class ServiceImpl<M extends BaseMapper<T>, T> implements IService<T> 填充泛型后的类，但不知道继承他的具体作用。
+现在具体说public Page<BookVO> pageAvailableBooks(BookPageRequest request) 
+Page<Book> page = new Page<>(request.getPageNum(), request.getPageSize());开启分页插件，虽然不知道其具体作用和意义。
+ Page<Book> bookPage = lambdaQuery()
+                .eq(Book::getStatus, 1)
+                .eq(request.getCategoryId() != null, Book::getCategoryId, request.getCategoryId())
+                .like(StringUtils.hasText(request.getKeyword()), Book::getTitle, request.getKeyword())
+                .orderByDesc(Book::getCreateTime)
+                .page(page);
+sql查询与封装page，等价select * from 不知道哪个库（这是怎么回事？不用写哪个库吗？）where Book::getStatus == 1即上架 and if（request.getCategoryId() != null）Book::getCategoryId = request.getCategoryId()
+if（StringUtils.hasText(request.getKeyword())）即keyword非空非只有空格，非null，Book::getTitle = request.getKeyword() 
+.orderByDesc(Book::getCreateTime)按时间倒序
+.page(page);用page页去接住结果
+调用buildBookVOPage(bookPage)
+进入private Page<BookVO> buildBookVOPage(Page<Book> bookPage)
+List<Book> records = bookPage.getRecords();将各页打入链表
+if (records == null || records.isEmpty()) {
+            Page<BookVO> emptyPage = new Page<>(bookPage.getCurrent(), bookPage.getSize(), bookPage.getTotal());
+            emptyPage.setRecords(Collections.emptyList());
+            return emptyPage;
+        }records为什么会是null，我不明白，估计只有保护的作用，如果上层传的没数据，就会使isEmpty为ture
+Page<BookVO> emptyPage = new Page<>(bookPage.getCurrent(), bookPage.getSize(), bookPage.getTotal());这应该是建造了一个空页，但我不明白具体建造原理
+emptyPage.setRecords(Collections.emptyList());这个更是意义不明
+当records有数据会就会直接从Map<Long, BookCategory> categoryMap = buildCategoryMap(records);开始
+Map<Long, BookCategory> categoryMap = buildCategoryMap(records);调用
+private Map<Long, BookCategory> buildCategoryMap(List<Book> books)
+Set<Long> categoryIds = books.stream()
+                .map(Book::getCategoryId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());这是收集CategoryId打成集合，意义不明
+if (categoryIds.isEmpty()) {
+            return Collections.emptyMap();
+        }如果没id，返回空Map，意义不明
+List<BookCategory> categories = bookCategoryService.listByIds(categoryIds);不知道在干什么
+return categories.stream()
+                .collect(Collectors.toMap(BookCategory::getId, c -> c));
+看不懂
+结束后返回Map<Long, BookCategory> categoryMap = buildCategoryMap(records);这一行
+开始List<BookVO> voRecords = records.stream()
+                .map(book -> toVO(book, categoryMap.get(book.getCategoryId())))
+                .collect(Collectors.toList())说实话看不懂
+voPage.setRecords(voRecords);
+        return voPage;这两行也看不懂
+但最后应该是封装好了，传给了controll用result接了，然后以vo序列化成json返回给前端
+
+
+
+纠正：
+1.@RestController = @Controller + @ResponseBody
+作用：
+1️⃣ 被 Spring 扫描
+2️⃣ 变成 Bean
+3️⃣ 可以被 Spring 管理
+4️⃣ 可以自动注入 Service
+
+2.@Service
+就是告诉 Spring：
+这是业务类
+创建对象
+交给Spring管理
+
+3.extends ServiceImpl<BookMapper, Book>
+意思：
+自动获得 CRUD 方法
+例如：
+save()
+removeById()
+getById()
+list()
+page()
+lambdaQuery()
+这些方法：
+全部是 MyBatisPlus 提供的
+
+
+
+4.IService 是什么
+你看到的：
+public interface BookService extends IService<Book>
+IService 本质是：
+接口（interface）
+里面只是 方法声明，例如：
+public interface IService<T> {
+
+    boolean save(T entity);
+
+    boolean removeById(Serializable id);
+
+    T getById(Serializable id);
+
+    List<T> list();
+
+}
+注意：
+只有方法声明
+没有方法实现
+所以：
+继承 IService
+只是继承方法定义
+你仍然需要自己写实现。
+二、ServiceImpl 是什么
+MyBatis-Plus 提供了一个默认实现：
+public class ServiceImpl<M extends BaseMapper<T>, T>
+        implements IService<T>
+结构是：
+IService  (接口)
+   ↑
+ServiceImpl  (默认实现)
+SrviceImpl 已经 把所有 CRUD 实现好了。
+例如：
+public boolean save(T entity) {
+    return baseMapper.insert(entity) > 0;
+}
+public T getById(Serializable id) {
+    return baseMapper.selectById(id);
+}
+public boolean removeById(Serializable id) {
+    return baseMapper.deleteById(id) > 0;
+}
+所以：
+ServiceImpl = IService 的默认实现
+三、如果只继承 IService 会发生什么
+假设你写：
+@Service
+public class BookServiceImpl implements BookService
+因为：
+BookService extends IService
+那你必须实现 所有方法：
+save()
+removeById()
+getById()
+list()
+page()
+lambdaQuery()
+...
+大概 二十多个方法。
+否则：
+编译报错
+四、继承 ServiceImpl 后会发生什么
+现在代码是：
+@Service
+public class BookServiceImpl
+    extends ServiceImpl<BookMapper, Book>
+    implements BookService
+意思是：
+ServiceImpl 已经实现 IService
+所以：
+BookServiceImpl 自动拥有 CRUD 方法
+你不用再写：
+save()
+removeById()
+getById()
+list()
+page()
+直接用就行。
+例如：
+save(book)
+getById(id)
+updateById(book)
+lambdaQuery()
+五、为什么 ServiceImpl 需要 BookMapper
+你看到泛型：
+ServiceImpl<BookMapper, Book>
+这里其实是：
+ServiceImpl<M, T>
+意思：
+M = Mapper
+T = Entity
+所以：
+M = BookMapper
+T = Book
+ServiceImpl 内部会用：
+protected M baseMapper;
+Spring 会自动注入：
+BookMapper
+所以：
+save()
+最终会调用：
+baseMapper.insert()
+
+
+5.Page 是 分页对象。
+Page<Book> page = new Page<>(1,10)
+
+意思：
+
+第1页
+每页10条
+
+SQL 自动变成：
+
+select * from book
+limit 0,10
+
+返回结果也会封装到 Page：
+
+total   总记录数
+current 当前页
+size    每页数量
+records 数据
+
+
+6.select * from 不知道哪个库
+
+这是因为：
+
+Book 实体类
+
+上面有：
+
+@TableName("book")
+
+MyBatisPlus 会自动知道：
+
+表 = book
+
+所以：
+
+lambdaQuery()
+
+自动查询：
+
+book表
+
+现解析BOOK实体类代码
+@Data
+
+这是 Lombok 注解。
+
+作用：自动生成下面这些方法：
+
+所有字段的 getter
+
+所有字段的 setter
+
+toString()
+
+equals()
+
+hashCode()
+
+所以你虽然没看到这些方法，但编译后它们其实是存在的。
+
+@EqualsAndHashCode(callSuper = false)
+
+作用：生成 equals() 和 hashCode() 方法时，不考虑父类的属性。
+
+因为这个类没有显式继承什么业务父类，所以这里一般是一个常见配置。
+
+callSuper = false 的意思就是：
+
+比较当前对象时，不把父类字段算进去。
+
+@Accessors(chain = true)
+
+作用：开启链式调用风格。
+
+比如以后你可以这样写：
+
+Book book = new Book()
+    .setTitle("Java编程思想")
+    .setAuthor("Bruce Eckel")
+    .setStatus(1);
+
+如果不开这个，通常就是一行一行单独 set。
+
+@TableName("book")
+
+作用：指定实体类 Book 对应数据库表 book。
+
+这对 MyBatis-Plus 很重要。
+
+因为框架需要知道：
+
+这个类映射哪张表
+
+查表时该怎么生成 SQL
+
+这句就是明确告诉它：
+
+操作 Book，就是操作 book 表。
+
+public class Book implements Serializable {
+
+这句分三部分看：
+
+1. public
+
+表示这个类是公开的，其他包也能访问。
+
+2. class Book
+
+定义了一个名为 Book 的类。
+
+3. implements Serializable
+
+表示 Book 类实现了 Serializable 接口，支持序列化。
+
+整体意思：
+
+定义一个公开的 Book 类，并且它的对象可以被序列化。
+
+private static final long serialVersionUID = 1L;
+
+这是序列化版本号。
+
+它的作用是：
+
+当对象进行序列化和反序列化时，用来判断类的版本是否一致。
+
+@TableId(type = IdType.AUTO)
+
+这是主键注解。
+
+作用有两个：
+
+1. 标记这个字段是主键
+
+后面紧跟着的是 id 字段，所以表示 id 是主键。
+
+2. 指定主键生成策略
+
+IdType.AUTO 表示主键自增。
+
+
+7..Page<BookVO> emptyPage = new Page<>(current,size,total)
+
+意思：
+
+创建一个空分页
+
+结构：
+
+Page
+ ├ current
+ ├ size
+ ├ total
+ └ records
+
+然后：
+
+emptyPage.setRecords(Collections.emptyList())
+
+意思：
+
+records = []
+
+返回：
+
+空分页
+
+前端收到：
+
+{
+ total:0
+ records:[]
+}
+
+
+8..categoryIds 收集的意义
+
+代码：
+
+Set<Long> categoryIds = books.stream()
+    .map(Book::getCategoryId)
+    .collect(...)
+
+作用：
+
+提取所有分类ID
+
+例如：
+
+数据库：
+
+book
+id  title   category
+1   java    1
+2   spring  1
+3   math    2
+
+提取：
+
+categoryIds = {1,2}
+九、为什么要这么做
+
+为了避免：
+
+N+1 查询
+
+错误写法：
+
+查10本书
+查10次分类
+
+正确写法：
+
+查10本书
+查1次分类
+
+SQL：
+
+select * from category
+where id in (1,2)
+
+
+9..Page<BookVO> emptyPage = new Page<>(bookPage.getCurrent(), bookPage.getSize(), bookPage.getTotal());
+
+先别急着看 emptyPage，先理解 Page 是什么。
+
+Page 可以理解成一个“分页结果盒子”，里面通常装这几样东西：
+
+current   当前第几页
+size      每页多少条
+total     总共有多少条数据
+records   当前页的数据列表
+
+所以：
+
+new Page<>(current, size, total)
+
+意思就是：
+
+创建一个分页对象，
+并告诉它：
+当前页是多少、
+每页多少条、
+总记录数是多少
+
+比如：
+
+new Page<>(2, 10, 35)
+
+意思是：
+
+第2页
+每页10条
+总共35条
+
+那它后面再配上：
+
+setRecords(...)
+
+就完整了。
+
+为什么这里要新建一个空页
+
+这段代码是：
+
+if (records == null || records.isEmpty()) {
+    Page<BookVO> emptyPage = new Page<>(bookPage.getCurrent(), bookPage.getSize(), bookPage.getTotal());
+    emptyPage.setRecords(Collections.emptyList());
+    return emptyPage;
+}
+
+意思是：
+
+如果这一页没有任何图书数据，
+那也要返回一个“格式完整”的分页对象给前端
+
+而不是返回 null。
+
+因为前端通常希望拿到这种结构：
+
+{
+  "current": 1,
+  "size": 10,
+  "total": 0,
+  "records": []
+}
+
+这样前端就知道：
+
+不是报错，
+而是“这一页没有数据”
+
+这就是这几个参数的意义。
+
+源码在这里。
+
+BookServiceImpl
+
+
+
+10..为什么要收集 categoryId
+
+一本书 Book 里通常只有：
+
+categoryId
+
+比如：
+
+《Java核心技术》 -> categoryId = 1
+《Spring实战》   -> categoryId = 1
+《高等数学》     -> categoryId = 2
+
+但是前端想要的不是只有 categoryId，而是还想看到：
+
+categoryName
+
+比如：
+
+1 -> 计算机类
+2 -> 数学类
+
+所以程序要做一件事：
+
+先把所有书里出现过的 categoryId 收集出来，
+再一次性去分类表里查这些分类
+
+这就是 categoryIds 的意义。
+为什么不能每本书查一次分类
+
+假设一页有 10 本书。
+
+如果你写成这样：
+
+for (每本书) {
+    查一次 category
+}
+
+那就会：
+
+查10次分类表
+
+这很浪费。
+
+所以更好的做法是：
+
+先提取出所有分类ID
+比如 {1, 2, 3}
+然后一次性查出这3个分类
+
+这就叫：
+
+批量查询
+
+所以 categoryIds 的存在，就是为了：
+
+一次查出所有用到的分类，避免重复查数据库
+
+
+
+11...filter(id -> id != null) 又是什么意思
+
+filter 的作用是：
+
+筛选
+保留满足条件的元素
+
+这里：
+
+.filter(id -> id != null)
+
+等价于：
+
+.filter(分类ID不为空)
+
+意思是：
+
+如果某本书没有 categoryId，就把它去掉
+
+比如：
+
+原来 map 后是：
+
+[1, null, 2]
+
+filter 后变成：
+
+[1, 2]
+
+所以这两句连起来就是：
+
+先把每本书变成 categoryId，
+再把空的 categoryId 去掉
+
+
+12..
+collect(Collectors.toMap()) 重新讲，按参数一个个拆
+
+你说这个最看不懂，我们就只看这一句：
+
+return categories.stream()
+        .collect(Collectors.toMap(BookCategory::getId, c -> c));
+
+源码在这里。
+
+BookServiceImpl
+
+1. 先看 categories.stream()
+
+假设数据库查回来的分类列表是：
+
+categories = [
+    category1(id=1, name="计算机类"),
+    category2(id=2, name="数学类")
+]
+2. Collectors.toMap(?, ?) 是干什么
+
+它的作用是：
+
+把一堆对象，收集成 Map
+
+Map 长这样：
+
+key -> value
+
+比如：
+
+1 -> category1
+2 -> category2
+3. 第一个参数：BookCategory::getId
+
+这个参数表示：
+
+Map 的 key 用什么
+
+这里是：
+
+用 category 的 id 作为 key
+
+也就是：
+
+category1 -> key = 1
+category2 -> key = 2
+4. 第二个参数：c -> c
+
+这个参数表示：
+
+Map 的 value 用什么
+
+这里：
+
+c -> c
+
+意思是：
+
+value 就是 category对象本身
+
+所以：
+
+1 -> category1
+2 -> category2
+5. 这句代码最终得到什么
+
+最终得到：
+
+Map<Long, BookCategory> categoryMap
+
+长这样：
+
+{
+  1 -> BookCategory(id=1, name="计算机类"),
+  2 -> BookCategory(id=2, name="数学类")
+}
+
+这样后面就可以很方便地写：
+
+categoryMap.get(book.getCategoryId())
+
+比如：
+
+book.getCategoryId() = 1
+
+那就得到：
+
+BookCategory(id=1, name="计算机类")
+
+
+
+13..从 records.stream().map() 到最后，重新完整讲一遍
+
+你说这一段全都要重新讲，那我们从头拆。
+
+代码是：
+
+List<BookVO> voRecords = records.stream()
+        .map(book -> toVO(book, categoryMap.get(book.getCategoryId())))
+        .collect(Collectors.toList());
+
+Page<BookVO> voPage = new Page<>(bookPage.getCurrent(), bookPage.getSize(), bookPage.getTotal());
+voPage.setRecords(voRecords);
+return voPage;
+
+源码在这里。
+
+BookServiceImpl
+
+第一步：records 是什么
+
+records 是当前页查出来的书列表。
+
+比如：
+
+records = [
+    book1(id=101, title="Java", categoryId=1),
+    book2(id=102, title="Spring", categoryId=1),
+    book3(id=103, title="高数", categoryId=2)
+]
+第二步：records.stream()
+
+意思是：
+
+把当前页这些书，放到一条流水线上，准备逐个处理
+第三步：.map(book -> toVO(...))
+
+这是最核心的一步。
+
+map 的作用还是：
+
+把原来的元素，变成新的元素
+
+这里原来的元素是：
+
+Book
+
+新的元素是：
+
+BookVO
+
+所以：
+
+.map(book -> toVO(book, categoryMap.get(book.getCategoryId())))
+
+意思是：
+
+把每一本 Book 转成一个 BookVO
+第四步：里面的 categoryMap.get(book.getCategoryId())
+
+这句分两步：
+
+1. book.getCategoryId()
+
+拿到这本书的分类ID。
+
+比如：
+
+book1.getCategoryId() = 1
+2. categoryMap.get(1)
+
+去前面那个分类Map里找：
+
+1 对应的 BookCategory
+
+得到：
+
+BookCategory(id=1, name="计算机类")
+
+所以：
+
+toVO(book, categoryMap.get(book.getCategoryId()))
+
+就是：
+
+把“书对象”和“它所属的分类对象”一起传给 toVO
+十、toVO() 到底干了什么
+
+代码是：
+
+private BookVO toVO(Book book, BookCategory category) {
+    BookVO vo = new BookVO();
+    BeanUtils.copyProperties(book, vo);
+    if (category != null) {
+        vo.setCategoryName(category.getName());
+    }
+    return vo;
+}
+
+源码在这里。
+
+BookServiceImpl
+
+它的作用就是：
+
+把数据库里的 Book 对象，组装成前端需要的 BookVO
+1. BookVO vo = new BookVO();
+
+先创建一个空的 BookVO。
+
+2. BeanUtils.copyProperties(book, vo);
+
+意思是：
+
+把 book 里同名的属性复制给 vo
+
+比如：
+
+book.id           -> vo.id
+book.title        -> vo.title
+book.author       -> vo.author
+book.isbn         -> vo.isbn
+book.totalStock   -> vo.totalStock
+
+但是：
+
+categoryName
+
+这个字段在 Book 里没有，所以复制不到。
+
+3. vo.setCategoryName(category.getName());
+
+所以要单独补这一句：
+
+把分类名称补到 BookVO 里
+
+最后就得到一个完整的 BookVO：
+
+id=101
+title="Java"
+author="xxx"
+categoryId=1
+categoryName="计算机类"
+...
+十一、.collect(Collectors.toList()) 是什么意思
+
+经过 .map(...) 之后，流水线里的东西已经不是 Book 了，而是：
+
+BookVO, BookVO, BookVO
+
+collect(Collectors.toList()) 的意思是：
+
+把这些 BookVO 收集成一个 List
+
+最终得到：
+
+List<BookVO> voRecords
+十二、voPage.setRecords(voRecords) 又是什么意思
+
+前面已经有了：
+
+Page<BookVO> voPage = new Page<>(current, size, total);
+
+但这个分页对象里还没真正装数据。
+
+所以：
+
+voPage.setRecords(voRecords);
+
+意思是：
+
+把当前页转换好的 BookVO 列表，放进分页对象里
+
+这样 voPage 就完整了：
+
+current = 1
+size = 10
+total = 35
+records = [BookVO1, BookVO2, BookVO3...]
+十三、最后 return voPage; 是什么效果
+
+返回给 Controller 的就是：
+
+Page<BookVO>
+
+然后 Controller 再包装一层：
+
+Result.success(pageResult)
+
+最终返回给前端的是：
+
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "current": 1,
+    "size": 10,
+    "total": 35,
+    "records": [
+      {
+        "id": 101,
+        "title": "Java",
+        "categoryId": 1,
+        "categoryName": "计算机类"
+      }
+    ]
+  }
+}
+
+
+
+
+二版纠正：
+二、你写 SQL 逻辑时有一个小误解
+
+你写：
+
+Book::getTitle = request.getKeyword()
+
+实际上是：
+
+LIKE
+
+也就是：
+
+title like %keyword%
+
+因为代码是：
+
+.like(...)
+三、你对 Page 构造的理解有一点点偏差
+
+你写：
+
+new Page<>(current,size,total)
+
+实际上 MyBatisPlus 的 Page 构造函数本来是：
+
+Page(current,size)
+
+但这里是 手动创建分页对象。
+
+你理解为：
+
+创建分页结构
+
+本质是对的，只是底层实现你不用太纠结。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

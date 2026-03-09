@@ -1,0 +1,19 @@
+第二天（慎重看解释，正确性待商榷，冲突以纠正栏为准）：
+第二天（User：图书模块)（"图书分类列表"）
+@GetMapping("/categories")
+    public Result<List<BookCategoryVO>> categories() {
+        List<BookCategoryVO> list = bookCategoryService.listAllCategories();
+进入public List<BookCategoryVO> listAllCategories()
+List<BookCategory> list = lambdaQuery()
+                .orderByAsc(BookCategory::getSort)
+                .orderByAsc(BookCategory::getId)
+                .list();
+按sort倒序，sort同按id倒序
+return list.stream()
+                .map(category -> {
+                    BookCategoryVO vo = new BookCategoryVO();
+                    BeanUtils.copyProperties(category, vo);
+                    return vo;
+                })
+                .collect(Collectors.toList());
+对其列表各元素转成vo，打成list，返回给control

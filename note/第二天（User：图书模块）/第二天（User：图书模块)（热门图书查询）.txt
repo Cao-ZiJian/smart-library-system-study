@@ -1,0 +1,1118 @@
+第二天（慎重看解释，正确性待商榷，冲突以纠正栏为准）：
+@ApiOperation("热门图书查询")
+    @GetMapping("/hot")
+public Result<List<BookVO>> hot(@RequestParam(value = "limit", defaultValue = "10") int limit)
+@RequestParam(value = "limit", defaultValue = "10") int limit这个参数不知道怎么传进去的？是因为前端传的json数据串有这个？
+List<BookVO> list = bookService.listHotBooks(limit);
+@Cacheable(cacheNames = CACHE_BOOK_HOT, key = "#limit")这个注解不知道在干什么
+ public List<BookVO> listHotBooks(int limit)
+if (limit <= 0 || limit > 20) {
+            limit = 10;
+        }这个检查貌似没什么用
+
+List<Book> books = lambdaQuery()
+                .eq(Book::getStatus, 1)
+                .orderByDesc(Book::getBorrowCount)
+                .last("limit " + limit)
+                .list();
+where条件是Book::getStatus== 1
+orderByDesc(Book::getBorrowCount)以借阅次数倒序排列？
+.last("limit " + limit)这个不知道撒好意思
+.list();这个不知道是干什么的，应该只有就只有结束的作用
+if (books.isEmpty()) {
+            return Collections.emptyList();
+        }没符合条件数据就返回空列表
+Map<Long, BookCategory> categoryMap = buildCategoryMap(books);
+调用private Map<Long, BookCategory> buildCategoryMap(List<Book> books) {
+        Set<Long> categoryIds = books.stream()
+                .map(Book::getCategoryId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        if (categoryIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        List<BookCategory> categories = bookCategoryService.listByIds(categoryIds);
+        return categories.stream()
+                .collect(Collectors.toMap(BookCategory::getId, c -> c));
+    }
+先将books转化成CategoryId流，过滤CategoryId=null的，打成set
+然后判空，空则返回空map
+不空查BookCategory对应表，listByIds(categoryIds)但这个列出的不太清楚要列的什么内容
+return categories.stream()
+                .collect(Collectors.toMap(BookCategory::getId, c -> c))
+返回一个BookCategory.Id和bookcategory对应的map，但不清楚内容
+生成Map<Long, BookCategory> categoryMap
+return books.stream()
+                .map(book -> toVO(book, categoryMap.get(book.getCategoryId())))
+                .collect(Collectors.toList());
+这里唯一重要的就是.map(book -> toVO(book, categoryMap.get(book.getCategoryId())))
+对每个元素调用private BookVO toVO(Book book, BookCategory category)
+每个book传入自身和自身CategoryId对应的BookCategory实体
+BookVO vo = new BookVO();
+        BeanUtils.copyProperties(book, vo);
+        if (category != null) {
+            vo.setCategoryName(category.getName());
+        }
+非空则填充vo元素
+return vo;返回vo
+回到.collect(Collectors.toList());
+该行对其vo流进行打成List后返回
+
+
+纠正：
+1...@RequestParam(value = "limit", defaultValue = "10")
+
+你问：
+
+这个参数怎么传进来的？是前端 JSON 吗？
+
+不是 JSON。
+
+它是 URL 查询参数。
+
+例如前端请求：
+
+GET /book/hot?limit=5
+
+URL 里：
+
+limit=5
+
+Spring 会自动解析：
+
+limit = 5
+
+如果前端不传：
+
+GET /book/hot
+
+就会用默认值：
+
+limit = 10
+
+代码在 Controller 里：
+
+
+BookController
+
+@GetMapping("/hot")
+public Result<List<BookVO>> hot(@RequestParam(value = "limit", defaultValue = "10") int limit)
+
+所以这里 不是 JSON，而是 URL 参数。
+
+
+
+2...@Cacheable 是干什么
+
+你说：
+
+不知道在干什么
+
+这是 Spring Cache 注解。
+
+代码在 Service：
+
+BookServiceImpl
+
+@Cacheable(cacheNames = CACHE_BOOK_HOT, key = "#limit")
+
+意思是：
+
+第一次查热门书 → 查数据库
+之后相同 limit → 直接从缓存拿
+
+流程：
+
+第一次请求
+GET /book/hot?limit=10
+        ↓
+查数据库
+        ↓
+结果存入 Redis
+        ↓
+返回
+
+第二次：
+
+GET /book/hot?limit=10
+        ↓
+直接从 Redis 返回
+
+好处：
+
+减少数据库查询
+提高性能
+
+
+
+3...limit <= 0 || limit > 20
+
+你说：
+
+好像没什么用
+
+其实是 参数保护。
+
+代码：
+
+if (limit <= 0 || limit > 20) {
+    limit = 10;
+}
+
+防止前端乱传：
+
+例如：
+
+/book/hot?limit=1000
+
+如果不限制：
+
+limit 1000
+
+数据库压力就大。
+
+所以做了限制：
+
+最多 20 条
+
+
+
+4...last("limit " + limit)
+
+你说：
+
+不太清楚什么意思
+
+这是 MyBatis-Plus 手动拼接 SQL。
+
+代码：
+
+.last("limit " + limit)
+
+最终 SQL：
+
+select * from book
+where status = 1
+order by borrow_count desc
+limit 10
+
+所以：
+
+只取前 limit 本书
+
+
+5....list() 是：
+
+执行 SQL
+返回 List<Book>
+
+所以：
+
+List<Book> books = lambdaQuery().xxx.list();
+
+就会得到：
+
+books = [
+  Book1,
+  Book2,
+  Book3
+]
+
+
+
+6...listByIds(categoryIds)
+
+你问：
+
+不太清楚列什么
+
+它会执行 SQL：
+
+select * from book_category
+where id in (1,2,3)
+
+返回：
+
+[
+ BookCategory(id=1),
+ BookCategory(id=2),
+ BookCategory(id=3)
+]
+
+
+7...
+.last() 的意思是：
+在 SQL 的最后拼接一段自定义 SQL
+
+
+8...@Cacheable 详细讲解
+
+你代码里这一句：
+
+@Cacheable(cacheNames = CACHE_BOOK_HOT, key = "#limit")
+
+源码： 
+
+BookServiceImpl
+
+这是 Spring Cache 注解。
+
+它的作用是：
+
+把方法返回值缓存起来
+三、没有缓存时的流程
+
+假设前端请求：
+
+GET /book/hot?limit=10
+
+执行流程：
+
+浏览器
+   ↓
+Controller
+   ↓
+Service.listHotBooks()
+   ↓
+SQL查询数据库
+   ↓
+返回数据
+
+如果很多用户访问：
+
+1000人访问
+
+就会：
+
+查数据库1000次
+
+数据库压力很大。
+
+四、有缓存时的流程
+
+加了：
+
+@Cacheable(cacheNames = CACHE_BOOK_HOT, key = "#limit")
+
+执行流程：
+
+第一次请求：
+
+浏览器
+ ↓
+Service.listHotBooks(10)
+ ↓
+Redis有没有缓存？
+ ↓
+没有
+ ↓
+查数据库
+ ↓
+结果存入 Redis
+ ↓
+返回
+
+第二次请求：
+
+浏览器
+ ↓
+Service.listHotBooks(10)
+ ↓
+Redis有没有缓存？
+ ↓
+有
+ ↓
+直接返回
+
+就不会查数据库了。
+
+五、缓存键是怎么生成的
+
+代码：
+
+@Cacheable(cacheNames = CACHE_BOOK_HOT, key = "#limit")
+
+意思：
+
+缓存名 = CACHE_BOOK_HOT
+key = limit参数
+
+例如：
+
+GET /book/hot?limit=10
+
+缓存 key：
+
+CACHE_BOOK_HOT::10
+
+如果：
+
+GET /book/hot?limit=5
+
+缓存 key：
+
+CACHE_BOOK_HOT::5
+
+所以：
+
+不同 limit 有不同缓存
+六、缓存的数据是什么
+
+缓存的是：
+
+List<BookVO>
+
+例如 Redis 里存：
+
+[
+  {
+    "id":1,
+    "title":"Java编程思想",
+    "borrowCount":200
+  },
+  {
+    "id":2,
+    "title":"Spring实战",
+    "borrowCount":180
+  }
+]
+七、为什么热门图书适合缓存
+
+热门图书的特点：
+
+访问频繁
+更新很少
+
+例如：
+
+10000人访问热门书
+
+但：
+
+借阅次数变化很慢
+
+所以：
+
+非常适合缓存
+八、缓存什么时候清理
+
+你注意这段代码：
+
+@CacheEvict(cacheNames = CACHE_BOOK_HOT, allEntries = true)
+
+源码： 
+
+BookServiceImpl
+
+例如：
+
+addBook()
+updateBook()
+changeBookStatus()
+
+都会：
+
+清空热门书缓存
+
+原因：
+
+书数据变了
+热门排行可能变化
+
+所以要重新计算。
+
+九、缓存 + 清理 的完整逻辑
+
+系统流程：
+
+查询热门书
+↓
+如果缓存存在
+↓
+直接返回
+
+如果缓存不存在
+↓
+查数据库
+↓
+写入缓存
+
+当数据修改：
+
+新增书
+修改书
+上下架
+
+就会：
+
+清空缓存
+
+下一次访问：
+
+重新计算热门书
+
+
+
+
+9...一、如果使用了 @Cacheable + RedisCacheManager
+
+你的代码里有：
+
+@Cacheable(cacheNames = CACHE_BOOK_HOT, key = "#limit")
+
+和
+
+@CacheEvict(cacheNames = CACHE_BOOK_HOT, allEntries = true)
+
+这说明：
+
+项目启用了 Spring Cache
+
+而如果项目配置的是：
+
+Redis 作为缓存
+
+那流程是：
+
+@Cacheable
+↓
+Spring Cache
+↓
+RedisCacheManager
+↓
+Redis
+
+所以如果 Redis 没启动：
+
+Redis连接失败
+
+常见报错：
+
+RedisConnectionFailureException
+Unable to connect to Redis
+二、但是有些项目不会报错
+
+有的项目会配置：
+
+spring:
+  cache:
+    type: simple
+
+这种情况下：
+
+缓存只是存在 JVM 内存里
+
+而不是 Redis。
+
+那就算 Redis 没启动：
+
+代码也能正常跑
+
+只是缓存存在：
+
+服务器内存
+三、判断项目是不是必须 Redis
+
+你可以看配置文件：
+
+application.yml 或 application-dev.yml
+
+如果有：
+
+spring:
+  redis:
+    host: localhost
+    port: 6379
+
+或者：
+
+spring:
+  cache:
+    type: redis
+
+那说明：
+
+项目用 Redis
+
+就必须启动 Redis。
+
+四、如果 Redis 没开会发生什么
+
+例如调用：
+
+/book/hot
+
+执行：
+
+@Cacheable(cacheNames = CACHE_BOOK_HOT, key = "#limit")
+
+Spring 会尝试：
+
+连接 Redis
+
+如果 Redis 没开：
+
+常见报错：
+
+org.springframework.data.redis.RedisConnectionFailureException
+Unable to connect to Redis
+
+程序可能：
+
+500错误
+五、调试阶段可以怎么处理
+
+如果你只是学习代码，有三种方式。
+
+方法1（最推荐）
+
+直接启动 Redis。
+
+Redis 启动非常简单：
+
+Windows：
+
+redis-server
+
+Linux / Mac：
+
+redis-server
+
+然后测试：
+
+redis-cli ping
+
+返回：
+
+PONG
+
+说明成功。
+
+方法2
+
+关闭缓存注解。
+
+临时注释：
+
+@Cacheable
+@CacheEvict
+
+这样：
+
+代码仍然能跑
+只是没有缓存
+方法3
+
+改配置：
+
+spring:
+  cache:
+    type: simple
+
+缓存变成：
+
+JVM内存
+
+不用 Redis。
+
+六、真实企业项目一般都会开 Redis
+
+原因很简单：
+
+缓存必须跨服务器共享
+
+例如：
+
+用户A访问服务器1
+用户B访问服务器2
+
+如果缓存只在内存：
+
+服务器1缓存 ≠ 服务器2缓存
+
+所以一般用：
+
+Redis
+
+
+
+10...key = "#limit" 里的 # 必须加
+
+如果不加：
+
+key = "limit"
+
+意思就完全不一样了。
+
+下面给你详细讲。
+
+一、#limit 是什么
+
+在 Spring Cache 里：
+
+@Cacheable(cacheNames = CACHE_BOOK_HOT, key = "#limit")
+
+这里的 #limit 是 SpEL 表达式（Spring Expression Language）。
+
+意思是：
+
+取方法参数 limit 的值
+作为缓存 key
+
+例如调用：
+
+GET /book/hot?limit=10
+
+方法：
+
+public List<BookVO> listHotBooks(int limit)
+
+参数：
+
+limit = 10
+
+缓存 key 就会变成：
+
+CACHE_BOOK_HOT::10
+二、为什么必须加 #
+
+在 SpEL 里：
+
+#变量名
+
+代表：
+
+方法参数变量
+
+例如：
+
+key = "#limit"
+
+表示：
+
+取 limit 参数的值
+三、如果不加 # 会发生什么
+
+如果写成：
+
+key = "limit"
+
+那 Spring 会认为：
+
+key 就是字符串 "limit"
+
+所以所有缓存 key 都是：
+
+CACHE_BOOK_HOT::limit
+
+无论你传什么：
+
+/book/hot?limit=5
+/book/hot?limit=10
+/book/hot?limit=20
+
+缓存都会是：
+
+CACHE_BOOK_HOT::limit
+
+这样就会出现问题：
+
+limit=5 的结果
+会被 limit=10 复用
+
+缓存就错了。
+
+四、正确的 key 生成过程
+
+代码：
+
+@Cacheable(cacheNames = CACHE_BOOK_HOT, key = "#limit")
+
+调用：
+
+/book/hot?limit=5
+
+缓存 key：
+
+CACHE_BOOK_HOT::5
+
+调用：
+
+/book/hot?limit=10
+
+缓存 key：
+
+CACHE_BOOK_HOT::10
+
+这样每个参数都有独立缓存。
+
+五、Spring Cache 常见 key 写法
+1 参数
+key = "#id"
+2 多个参数
+key = "#userId + ':' + #bookId"
+
+生成：
+
+12:45
+3 对象属性
+key = "#request.pageNum"
+4 默认 key（不写）
+
+如果不写 key：
+
+@Cacheable("book")
+
+Spring 默认用：
+
+所有参数组成 key
+六、你这个接口为什么用 #limit
+
+因为方法：
+
+public List<BookVO> listHotBooks(int limit)
+
+唯一影响结果的参数就是：
+
+limit
+
+所以：
+
+key = "#limit"
+
+最合理。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

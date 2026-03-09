@@ -1,0 +1,406 @@
+第二天（慎重看解释，正确性待商榷，冲突以纠正栏为准）：
+@ApiOperation("图书详情")
+    @GetMapping("/{id}")路径/auth/book/{id}貌似是这样的，我不太懂为什么会这么传递
+public Result<BookVO> detail(@PathVariable("id") Long id)不懂这个@PathVariable("id")注解
+BookVO vo = bookService.getBookDetail(id);调用  public BookVO getBookDetail(Long id) 
+ Book book = getById(id);因为book有@TableName("book")所以对其sql直接对book表开查，但不明白book实体类@EqualsAndHashCode(callSuper = false)这个注解和为什么implements Serializable实现这个接口
+查到的数据直接封装book，
+如果book是null就是没有if (book == null) {
+            throw new BusinessException(404, "图书不存在");
+        }
+BookCategory category = bookCategoryService.getById(book.getCategoryId());查询这个分类
+讲一讲public class BookCategory implements Serializable
+由于dev开了驼峰所以@TableName("book_category")应该是对其驼峰后表名为bookCategory？不然驼峰貌似没用了
+    private Integer sort;这个参数很奇怪，貌似没具体用到
+    private Integer status;这是对这个分类的控制，很鸡肋
+BookVO vo = new BookVO();创一个对象用来接收
+BeanUtils.copyProperties(book, vo);拷贝
+if (category != null) {
+            vo.setCategoryName(category.getName());
+        }补充缺少的属性
+return vo;返回vo
+controller封装一下，mvc打成json数据串，发给前端
+
+
+纠正：
+1..@PathVariable("id") 解释你说：
+
+不懂这个注解
+
+这个其实很简单。
+
+前端请求：
+
+GET /book/5
+
+URL 中的 5 就是 {id}。
+
+Spring 会自动把它解析成：
+
+id = 5
+
+代码：
+
+public Result<BookVO> detail(@PathVariable("id") Long id)
+
+意思就是：
+
+把URL里的id变量
+注入到方法参数 id
+
+例如：
+
+GET /book/8
+
+结果：
+
+id = 8
+
+
+2..@EqualsAndHashCode(callSuper = false)
+
+你说：
+
+不明白这个注解
+
+你的疑问是正常的，这个在实体类里其实几乎没有业务意义。
+
+作用只是：
+
+生成 equals() 和 hashCode()
+
+并且：
+
+callSuper=false
+表示不比较父类字段
+
+因为 Book 没继承业务父类，所以：
+
+几乎没有影响
+
+很多项目只是 统一写法。
+
+
+
+3..为什么实现 Serializable
+
+你写：
+
+implements Serializable 不太懂
+
+这个是 Java基础规范。
+
+实体类通常要支持：
+
+序列化
+
+原因有三个常见用途：
+
+1️⃣ 对象缓存（Redis / Session）
+2️⃣ 网络传输
+3️⃣ 分布式系统
+
+所以实体类一般都会写：
+
+implements Serializable
+
+只是一个规范。
+
+
+4..BookCategory 表名理解
+
+你写：
+
+驼峰后是不是变成 bookCategory？
+
+这个地方 你理解错了。
+
+代码：
+
+@TableName("book_category")
+
+意思是：
+
+数据库表名 = book_category
+
+驼峰规则是：
+
+数据库字段 -> Java字段
+
+例如：
+
+publish_year → publishYear
+create_time → createTime
+
+不是：
+
+book_category → bookCategory
+
+所以：
+
+表名仍然是 book_category
+
+
+5..sort 字段作用
+
+你说：
+
+sort 很奇怪，好像没用
+
+这个字段是：
+
+分类排序
+
+例如前端展示分类：
+
+1 计算机
+2 文学
+3 数学
+
+SQL 可以：
+
+order by sort asc
+
+值越小越靠前。
+
+只是 这个模块暂时没用到。
+
+
+6..status 字段
+
+你说：
+
+很鸡肋
+
+其实不是。
+
+status = 1 启用
+status = 0 禁用
+
+例如：
+
+管理员禁用某个分类
+
+那前端就不展示。
+
+很多系统都有这种字段。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
