@@ -1,0 +1,730 @@
+（慎重看解释，正确性待商榷，冲突以纠正栏为准）：
+@Api(tags = "预约模块（用户端）")
+@RestController
+@RequestMapping("/user/reservation")
+@Validated
+@RequiredArgsConstructor
+public class ReservationController {
+
+    private final ReservationService reservationService;
+
+    @ApiOperation("创建预约")
+    @PostMapping("/create") post请求是修改数据吧？
+public Result<Void> create(@RequestAttribute("currentUserId") Long currentUserId,
+                               @Valid @RequestBody ReservationCreateRequest request)
+@RequestBody 前端传json
+@Transactional(rollbackFor = Exception.class)开事务因为操作多张表了
+ReservationCreateRequest request
+该参数里@Future(message = "开始时间必须是将来时间")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime startTime;这俩注解看不懂，什么作用？
+
+Seat seat = seatMapper.selectById(request.getSeatId())
+if (seat == null) {
+            throw new BusinessException("座位不存在");
+        }
+        if (seat.getStatus() == null || seat.getStatus() == 0) {
+            throw new BusinessException("座位不可用，无法预约");
+        }
+
+ LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startTime = request.getStartTime();
+        LocalDateTime endTime = request.getEndTime();
+        if (startTime == null || endTime == null || !startTime.isBefore(endTime)) {
+            throw new BusinessException("开始时间必须早于结束时间");
+        }
+        if (!startTime.isAfter(now)) {
+            throw new BusinessException("不能预约过去时间");
+        }
+
+QueryWrapper<Reservation> seatConflictWrapper = new QueryWrapper<>();这代码没见过不知道干什么的
+seatConflictWrapper.lambda()
+                .eq(Reservation::getSeatId, seat.getId())
+                .in(Reservation::getStatus,
+                        ReservationStatusEnum.PENDING_CHECK_IN.getCode(),
+                        ReservationStatusEnum.IN_USE.getCode())
+                .lt(Reservation::getStartTime, endTime)
+                .gt(Reservation::getEndTime, startTime);
+对reservation表Reservation::getSeatId=seat.getId()
+Reservation::getStatus in （PENDING_CHECK_IN，IN_USE）这什么英文看不懂
+Reservation::getStartTime严格小于endTime
+Reservation::getEndTime>startTime
+这是查合理的数据吧？看不明白
+long seatConflictCount = count(seatConflictWrapper);为什么能这么写？
+
+QueryWrapper<Reservation> userConflictWrapper = new QueryWrapper<>();
+        userConflictWrapper.lambda()
+                .eq(Reservation::getUserId, userId)
+                .in(Reservation::getStatus,
+                        ReservationStatusEnum.PENDING_CHECK_IN.getCode(),
+                        ReservationStatusEnum.IN_USE.getCode())
+                .lt(Reservation::getStartTime, endTime)
+                .gt(Reservation::getEndTime, startTime);
+        long userConflictCount = count(userConflictWrapper);
+        if (userConflictCount > 0) {
+            throw new BusinessException("该时间段内您已有其他预约");
+        }和上面相同
+
+Reservation reservation = new Reservation();
+        reservation.setUserId(userId);
+        reservation.setSeatId(seat.getId());
+        reservation.setStartTime(startTime);
+        reservation.setEndTime(endTime);
+        reservation.setStatus(ReservationStatusEnum.PENDING_CHECK_IN.getCode());
+        reservation.setRemark(request.getRemark());
+
+        if (!save(reservation)) {
+            throw new BusinessException("创建预约失败，请稍后重试");
+        }封装预约并插入表中
+
+
+
+
+纠正：
+
+1...
+@PostMapping("/create")
+
+说明这是一个 POST接口
+
+POST一般用于：
+
+类型	方法
+新增	POST
+查询	GET
+更新	PUT
+删除	DELETE
+
+创建预约属于 新增数据
+
+所以用 POST。
+
+
+
+2...2 @Future
+
+意思：
+
+必须是未来时间
+
+例如：
+
+2026-03-10 09:00 ❌
+2026-03-11 10:00 ✅
+3 @JsonFormat
+
+解决：
+
+JSON时间格式解析
+
+前端传：
+
+"2026-03-11 10:00:00"
+
+否则Spring不知道怎么转LocalDateTime。
+
+
+
+3...
+@Transaction 因为操作多张表
+
+不一定。
+
+这里事务是为了：
+
+保证预约逻辑原子性
+
+
+4....
+时间冲突判断：
+
+已有预约: [A_start , A_end]
+
+新预约:   [B_start , B_end]
+
+如果满足：
+
+A_start < B_end
+AND
+A_end > B_start
+
+说明：
+
+时间有重叠
+
+举例：
+
+已有：
+
+10:00 - 12:00
+
+新预约：
+
+11:00 - 13:00
+
+判断：
+
+10:00 < 13:00  ✔
+12:00 > 11:00  ✔
+
+说明冲突。
+
+5...
+ReservationService
+extends IService
+
+代码：
+
+
+ReservationService
+
+而：
+
+IService
+
+里有：
+
+count(Wrapper)
+
+所以：
+
+count(seatConflictWrapper)
+
+等价SQL：
+
+SELECT COUNT(*) FROM reservation WHERE ...
+
+
+
+6...
+.eq(Reservation::getUserId, userId)
+
+逻辑：
+
+同一时间
+同一用户
+不能预约两个座位
+
+否则：
+
+该时间段内您已有其他预约
+
+
+
+
+7...QueryWrapper 你可以先把它理解成：
+
+MyBatis-Plus 提供的“拼 SQL 条件”的对象。
+
+也就是你不用自己手写：
+
+where seat_id = 3
+and status in ('PENDING_CHECK_IN','IN_USE')
+and start_time < '2026-03-11 12:00:00'
+and end_time > '2026-03-11 10:00:00'
+
+而是用 Java 链式调用把这个 where 条件一点点拼出来。你这段代码正是在做“查有没有冲突预约”。这段逻辑就在 createReservation 里。
+
+ReservationServiceImpl
+
+1. 先看最外层这句是什么意思
+QueryWrapper<Reservation> seatConflictWrapper = new QueryWrapper<>();
+
+意思是：
+
+创建一个 针对 Reservation 表查询条件 的包装器。
+
+因为泛型写的是 Reservation，所以它最终拼的是和 reservation 表有关的条件。你的 Reservation 实体就对应 reservation 表，里面有 userId、seatId、startTime、endTime、status 这些字段。
+
+Reservation
+
+你可以把它理解成：
+
+现在先拿一个“空白的 where 条件对象”
+后面慢慢往里加条件
+2. lambda() 是啥
+seatConflictWrapper.lambda()
+
+这一步的作用是：
+
+把普通 QueryWrapper 切成 Lambda 风格条件构造器。
+
+为什么要这样写？
+
+因为这样你可以写：
+
+Reservation::getSeatId
+Reservation::getStatus
+Reservation::getStartTime
+
+而不是写字符串列名：
+
+"seat_id"
+"status"
+"start_time"
+
+这样有两个好处：
+
+第一，更安全。字段改名时，IDE 会提醒你；字符串不会提醒。
+第二，更好读。你一眼就知道是在用实体类哪个属性。
+
+所以：
+
+.lambda().eq(Reservation::getSeatId, seat.getId())
+
+本质就是：
+
+seat_id = ?
+3. 这一整段到底在查什么
+
+你这段代码是：
+
+seatConflictWrapper.lambda()
+        .eq(Reservation::getSeatId, seat.getId())
+        .in(Reservation::getStatus,
+                ReservationStatusEnum.PENDING_CHECK_IN.getCode(),
+                ReservationStatusEnum.IN_USE.getCode())
+        .lt(Reservation::getStartTime, endTime)
+        .gt(Reservation::getEndTime, startTime);
+
+它的意思不是“查合理数据”，而是：
+
+查出所有“和这次新预约发生时间冲突的旧预约记录”。 
+
+ReservationServiceImpl
+
+也就是要找：
+
+是同一个座位
+
+状态还是有效状态
+
+时间段和这次新预约有重叠
+
+只要查出来一条，就说明这个座位这段时间不能再约了。
+
+4. 一行一行拆开讲
+第一行
+.eq(Reservation::getSeatId, seat.getId())
+
+eq 就是 =，equal。
+
+意思：
+
+seat_id = 当前想预约的座位id
+
+比如你这次想预约 5 号座位，那这里只查：
+
+seat_id = 5
+
+也就是说：
+
+只检查这个座位自己的预约记录，不管别的座位。
+
+第二行
+.in(Reservation::getStatus,
+        ReservationStatusEnum.PENDING_CHECK_IN.getCode(),
+        ReservationStatusEnum.IN_USE.getCode())
+
+in 就是 SQL 里的 in (...)。
+
+对应枚举里这两个状态：
+PENDING_CHECK_IN、IN_USE。这两个状态都定义在 ReservationStatusEnum 里。
+
+ReservationStatusEnum
+
+翻译一下：
+
+PENDING_CHECK_IN = 待签到
+IN_USE = 使用中
+
+所以这句的意思是：
+
+status in ('PENDING_CHECK_IN', 'IN_USE')
+
+为什么只查这两个状态？
+
+因为只有这两种状态算“还占着这个时间段”。
+
+比如：
+
+CANCELED 已取消，不算占用
+
+FINISHED 已结束，不算占用
+
+EXPIRED 已过期，也不算占用
+
+所以它只筛选 有效预约。
+
+第三行
+.lt(Reservation::getStartTime, endTime)
+
+lt 就是 less than，严格小于 <
+
+意思：
+
+旧预约.start_time < 新预约.endTime
+
+注意，是“数据库里已有预约”的开始时间，和“你这次新预约”的结束时间比较。
+
+第四行
+.gt(Reservation::getEndTime, startTime);
+
+gt 就是 greater than，严格大于 >
+
+意思：
+
+旧预约.end_time > 新预约.startTime
+5. 为什么是这两个时间条件
+
+这是整段代码的核心。
+
+它在判断两个时间区间是否重叠。
+
+设：
+
+旧预约时间段：
+
+[A_start, A_end]
+
+新预约时间段：
+
+[B_start, B_end]
+
+两个区间重叠的条件是：
+
+A_start < B_end
+A_end > B_start
+
+也就是代码里的：
+
+.lt(Reservation::getStartTime, endTime)
+.gt(Reservation::getEndTime, startTime)
+
+这不是乱写的，这是判断“时间是否交叉”的经典写法。
+
+6. 举例你就明白了
+
+假设数据库里已经有一条预约：
+
+10:00 - 12:00
+
+你现在新建预约：
+
+11:00 - 13:00
+
+代进去：
+
+旧开始 < 新结束：
+
+10:00 < 13:00   true
+
+旧结束 > 新开始：
+
+12:00 > 11:00   true
+
+两个都成立，说明有重叠，冲突。
+
+再看一个不冲突的：
+
+旧预约：
+
+10:00 - 12:00
+
+新预约：
+
+12:00 - 14:00
+
+代进去：
+
+10:00 < 14:00   true
+12:00 > 12:00   false
+
+第二个不成立，所以 不冲突。
+
+这也说明它这里用的是严格大于 > 和严格小于 <，所以：
+
+前一个结束时间 = 后一个开始时间
+
+被认为是 可以衔接，不算冲突。
+
+这个设计是合理的。
+
+7. 这一段最终会拼成什么 SQL
+
+大致就是：
+
+select count(*)
+from reservation
+where seat_id = ?
+  and status in ('PENDING_CHECK_IN', 'IN_USE')
+  and start_time < ?
+  and end_time > ?
+
+参数大概是：
+
+seat.getId()
+endTime
+startTime
+
+也就是：
+
+查这个座位在这个时间范围内有没有有效冲突预约
+8. count(seatConflictWrapper) 为什么能这么写
+
+后面这句：
+
+long seatConflictCount = count(seatConflictWrapper);
+
+意思是：
+
+拿刚才拼好的条件，去数据库执行 count(*)。
+
+之所以能直接写 count(...)，是因为你的 ReservationService 继承了 IService<Reservation>，而实现类又继承了 ServiceImpl<ReservationMapper, Reservation>，这些父类/接口里已经给你提供了通用 CRUD 方法，包括 count、save、getById、updateById 这些。
+
+所以这里不是凭空来的方法，而是继承来的。
+
+你可以把它理解成：
+
+count(wrapper)
+=
+按照 wrapper 里的条件
+执行 select count(*)
+9. seatConflictWrapper 和 userConflictWrapper 的区别
+
+你代码里下面还有一段几乎一样的：
+
+QueryWrapper<Reservation> userConflictWrapper = new QueryWrapper<>();
+userConflictWrapper.lambda()
+        .eq(Reservation::getUserId, userId)
+        .in(Reservation::getStatus,
+                ReservationStatusEnum.PENDING_CHECK_IN.getCode(),
+                ReservationStatusEnum.IN_USE.getCode())
+        .lt(Reservation::getStartTime, endTime)
+        .gt(Reservation::getEndTime, startTime);
+
+这段和上面唯一关键区别是：
+
+上面那段：
+
+.eq(Reservation::getSeatId, seat.getId())
+
+检查的是：
+
+这个座位有没有被别人占用
+
+下面这段：
+
+.eq(Reservation::getUserId, userId)
+
+检查的是：
+
+这个用户自己在这个时间段有没有别的预约
+
+也就是：
+
+seatConflictWrapper 防止“一座位多人抢”
+
+userConflictWrapper 防止“一用户同时占两个座位”
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

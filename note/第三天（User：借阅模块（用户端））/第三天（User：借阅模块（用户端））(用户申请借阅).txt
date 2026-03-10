@@ -1,0 +1,521 @@
+第三天（慎重看解释，正确性待商榷，冲突以纠正栏为准）（2次纠正）：
+第三天（"借阅模块（用户端）("用户申请借阅")
+@Api(tags = "借阅模块（用户端）")swagger类名
+@RestController json打成string给controll，controll结果打成json给前端
+@RequestMapping("/user/borrow") dev配置 /auth/user/borrow
+@Validated 参数检测开启
+@RequiredArgsConstructor lomnook打出构造器spring注入
+@ApiOperation("用户申请借阅")
+    @PostMapping("/apply") /auth/user/borrow/apply
+public Result<Void> apply(@RequestAttribute("currentUserId") Long currentUserId,
+                              @Valid @RequestBody BorrowApplyRequest request) 吧requestsevelet中的"currentUserId"诸如进去，@Validdto参数检测 @RequestBody将传来的json数据打成request，是这样吗？不懂
+接口调用public interface BorrowOrderService extends IService<BorrowOrder> 这个继承为什么要继承IService<BorrowOrder>？泛型为何替换成BorrowOrder，不懂。
+@Service 只有纳入bean管理作用吧
+@RequiredArgsConstructor
+public class BorrowOrderServiceImpl extends ServiceImpl<BorrowOrderMapper, BorrowOrder> implements BorrowOrderService 表名为BorrowOrderMapper表元素的dto为BorrowOrder
+Book book = bookService.getById(request.getBookId())查book表中数据
+if (book == null) {
+            throw new BusinessException("图书不存在");
+        }null只会是书不存在
+
+if (book.getStatus() == null || book.getStatus() == 0) {
+            throw new BusinessException("图书未上架或已下架");
+        }
+
+if (book.getAvailableStock() == null || book.getAvailableStock() <= 0) {
+            throw new BusinessException("图书库存不足");
+        }
+
+
+long count = lambdaQuery()
+                .eq(BorrowOrder::getUserId, userId)
+                .eq(BorrowOrder::getBookId, request.getBookId())
+                .in(BorrowOrder::getStatus,
+                        BorrowStatusEnum.APPLYING.getCode(),
+                        BorrowStatusEnum.APPROVED.getCode(),
+                        BorrowStatusEnum.LENT.getCode(),
+                        BorrowStatusEnum.OVERDUE.getCode())
+                .count()
+查@TableName("borrow_order")
+public class BorrowOrder implements Serializable中表"borrow_order"，BorrowOrder::getUserId=userId
+BorrowOrder::getBookId = request.getBookId()
+BorrowOrder::getStatus in （申请中 ， 批准， 借出，逾期）
+但是getCode())这个函数是干啥的？没用吧？
+.count();收集存在多少行数据
+if (count > 0) {
+            throw new BusinessException("存在未完成的借阅记录，请先归还后再申请");
+        }
+由于public class BusinessException extends RuntimeException是运行时异常，报了就会？不懂这个异常处理流程？
+count = 0
+ BorrowOrder order = new BorrowOrder();借阅清单对象        order.setUserId(userId);
+        order.setBookId(request.getBookId());
+order.setStatus(BorrowStatusEnum.APPLYING.getCode());这个意义不明
+        order.setApplyTime(LocalDateTime.now());
+        order.setRenewCount(0);
+        order.setRemark(request.getRemark());
+
+if (!save(order)) {
+            throw new BusinessException("借阅申请失败，请稍后重试");
+        }莫名其妙的防御
+
+
+
+
+
+
+
+纠正：
+1...二、为什么要继承 IService<BorrowOrder>
+
+代码：
+
+public interface BorrowOrderService 
+        extends IService<BorrowOrder>
+
+BorrowOrderService
+
+这是 MyBatis-Plus 提供的通用CRUD接口
+
+继承后你自动获得：
+
+save()
+getById()
+removeById()
+list()
+lambdaQuery()
+lambdaUpdate()
+
+例如：
+
+save(order)
+
+就是 MyBatis-Plus 已经帮你写好的
+
+insert into borrow_order ...
+泛型为什么是 BorrowOrder
+
+因为这个Service是：
+
+BorrowOrderService
+
+操作的表是：
+
+borrow_order
+
+对应实体：
+
+BorrowOrder
+
+BorrowOrder
+
+所以泛型必须是：
+
+BorrowOrder
+
+意思是：
+
+IService<操作的实体类型>
+
+
+
+
+2...四、lambdaQuery 这一段你理解90%正确
+
+代码：
+
+long count = lambdaQuery()
+        .eq(BorrowOrder::getUserId, userId)
+        .eq(BorrowOrder::getBookId, request.getBookId())
+        .in(BorrowOrder::getStatus,
+                BorrowStatusEnum.APPLYING.getCode(),
+                BorrowStatusEnum.APPROVED.getCode(),
+                BorrowStatusEnum.LENT.getCode(),
+                BorrowStatusEnum.OVERDUE.getCode())
+        .count();
+
+BorrowOrderServiceImpl
+
+SQL 等价：
+
+select count(*)
+from borrow_order
+where user_id = ?
+and book_id = ?
+and status in (
+  'APPLYING',
+  'APPROVED',
+  'LENT',
+  'OVERDUE'
+)
+
+含义：
+
+检查用户是否已经借了这本书
+
+因为这些状态代表：
+
+APPLYING   申请中
+APPROVED   已批准
+LENT       已借出
+OVERDUE    逾期
+
+都算 未完成借阅
+
+所以：
+
+count > 0
+
+就不允许借。
+
+
+
+3...、BusinessException 抛出后会发生什么
+
+代码：
+
+throw new BusinessException("图书不存在");
+
+BorrowOrderServiceImpl
+
+BusinessException：
+
+public class BusinessException extends RuntimeException
+
+BusinessException
+
+流程：
+
+Service
+  ↓
+抛异常
+  ↓
+Spring捕获
+  ↓
+全局异常处理器
+  ↓
+转换为统一Result
+  ↓
+返回给前端
+
+返回JSON大概是：
+
+{
+  "code":400,
+  "message":"图书不存在"
+}
+
+所以这不是崩溃。
+
+而是：
+
+业务错误提示
+
+
+
+5...六、为什么要判断 save(order)
+
+代码：
+
+if (!save(order)) {
+    throw new BusinessException("借阅申请失败，请稍后重试");
+}
+
+BorrowOrderServiceImpl
+
+save() 返回：
+
+boolean
+
+含义：
+
+true  插入成功
+false 插入失败
+
+所以这里是：
+
+数据库插入失败 → 抛异常
+
+属于：
+
+防御式编程
+
+
+6...八、你笔记里一个理解错误
+
+你写：
+
+null只会是书不存在
+
+其实还有一种可能：
+
+数据库异常
+
+但项目里基本就是：
+
+id不存在
+
+
+
+7...public enum BorrowStatusEnum
+
+表示借阅状态枚举，统一管理 borrow_order.status 可取的固定状态值。
+
+APPLYING("APPLYING"), ...
+
+每个枚举常量本质上都是一个 BorrowStatusEnum 对象，并且绑定一个字符串 code。
+
+private final String code;
+
+表示每个状态对象内部都保存一个真正用于业务/数据库存储的状态值。
+
+BorrowStatusEnum(String code)
+
+构造方法，在创建每个枚举对象时把传入的 code 保存到当前对象里。
+
+public String getCode()
+
+用于取出该状态对应的字符串值，方便和数据库中的 status 字段进行赋值、比较、查询。
+
+
+
+
+
+2次纠正：
+1...一、Controller部分
+
+你写：
+
+@RestController json打成string给controll，controll结果打成json给前端
+
+这个理解 有一点点不准确。
+
+真实流程是：
+
+前端JSON
+   ↓
+@RequestBody
+   ↓
+Java对象 (BorrowApplyRequest)
+   ↓
+Controller处理
+   ↓
+返回 Result
+   ↓
+Spring自动转JSON
+   ↓
+返回前端
+
+所以更准确写法：
+
+@RestController
+返回对象自动转为JSON返回给前端
+
+不是：
+
+json → string
+
+而是：
+
+json → Java对象
+Java对象 → json
+
+
+
+2...@RequestAttribute("currentUserId")
+
+你写：
+
+把request servlet中的currentUserId注入进去
+
+这个理解 正确 90%。
+
+完整流程是：
+
+用户请求
+   ↓
+LoginInterceptor
+   ↓
+解析JWT
+   ↓
+request.setAttribute("currentUserId", userId)
+   ↓
+Controller读取
+
+所以：
+
+@RequestAttribute("currentUserId")
+
+就是：
+
+从 request 中读取属性
+
+
+
+3...order.setStatus(BorrowStatusEnum.APPLYING.getCode());这个意义不明
+
+其实意义非常明确：
+
+创建借阅订单时
+默认状态 = APPLYING
+
+也就是：
+
+申请中
+
+完整流程是：
+
+用户申请
+   ↓
+状态 = APPLYING
+   ↓
+馆员审核
+   ↓
+APPROVED / REJECTED
+   ↓
+办理借出
+   ↓
+LENT
+   ↓
+归还
+   ↓
+RETURNED
+
+这是一个 状态机。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

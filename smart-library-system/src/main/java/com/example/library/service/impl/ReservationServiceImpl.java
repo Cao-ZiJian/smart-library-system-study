@@ -183,7 +183,8 @@ public class ReservationServiceImpl extends ServiceImpl<ReservationMapper, Reser
 
         List<Reservation> records = reservationPage.getRecords();
         if (records == null || records.isEmpty()) {
-            Page<ReservationVO> emptyPage = new Page<>(reservationPage.getCurrent(), reservationPage.getSize(), reservationPage.getTotal());
+            Page<ReservationVO> emptyPage = new Page<>(reservationPage.getCurrent(),
+                    reservationPage.getSize(), reservationPage.getTotal());
             emptyPage.setRecords(Collections.emptyList());
             return emptyPage;
         }
@@ -207,7 +208,8 @@ public class ReservationServiceImpl extends ServiceImpl<ReservationMapper, Reser
                                 : null)))
                 .collect(Collectors.toList());
 
-        Page<ReservationVO> voPage = new Page<>(reservationPage.getCurrent(), reservationPage.getSize(), reservationPage.getTotal());
+        Page<ReservationVO> voPage = new Page<>(reservationPage.getCurrent(),
+                reservationPage.getSize(), reservationPage.getTotal());
         voPage.setRecords(voRecords);
         return voPage;
     }

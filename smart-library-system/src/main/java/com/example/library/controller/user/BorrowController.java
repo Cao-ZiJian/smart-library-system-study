@@ -61,7 +61,8 @@ public class BorrowController {
     @GetMapping("/page")
     public Result<Page<BorrowOrderVO>> page(@RequestAttribute("currentUserId") Long currentUserId,
                                             @Valid BorrowPageRequest request) {
-        Page<BorrowOrderVO> pageResult = borrowOrderService.pageUserBorrowOrders(currentUserId, request);
+        Page<BorrowOrderVO> pageResult =
+                borrowOrderService.pageUserBorrowOrders(currentUserId, request);
         return Result.success(pageResult);
     }
 }

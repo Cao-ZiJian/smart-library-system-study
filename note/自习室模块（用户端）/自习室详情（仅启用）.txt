@@ -1,0 +1,388 @@
+@ApiOperation("自习室详情（仅启用）")
+    @GetMapping("/{id}")
+    public Result<StudyRoomVO> detail(@PathVariable("id") Long id)
+路径/auth/study-room/{id}
+这咋知道这个路径参数名字就是id的？怪奇怪的
+StudyRoomVO vo = studyRoomService.getEnabledDetail(id);
+
+public StudyRoomVO getEnabledDetail(Long id) {
+        StudyRoom room = lambdaQuery()
+                .eq(StudyRoom::getId, id)
+                .eq(StudyRoom::getStatus, 1)
+                .one();这个.one()应该是没用的
+ if (room == null) {
+            throw new BusinessException(404, "自习室不存在或已被禁用");
+        }
+        StudyRoomVO vo = new StudyRoomVO();
+        BeanUtils.copyProperties(room, vo);
+        return vo;
+剩下的没说的
+
+
+
+
+
+纠正：
+一、路径 /study-room/{id} 怎么知道参数名是 id
+
+Controller代码：
+
+@GetMapping("/{id}")
+public Result<StudyRoomVO> detail(@PathVariable("id") Long id)
+
+接口路径：
+
+/study-room/{id}
+
+来源：
+
+
+StudyRoomController
+
+这里的 {id} 叫：
+
+路径变量（Path Variable）
+
+Spring 的规则是：
+
+{变量名}  →  @PathVariable("变量名")
+
+也就是：
+
+{id}  →  @PathVariable("id")
+举例
+
+请求：
+
+GET /study-room/5
+
+Spring 会解析：
+
+id = 5
+
+然后传入方法：
+
+detail(5)
+如果写成别的名字也可以
+
+例如：
+
+@GetMapping("/{roomId}")
+public Result detail(@PathVariable("roomId") Long id)
+
+请求：
+
+/study-room/5
+
+Spring会解析：
+
+roomId = 5
+
+再赋值给参数 id。
+
+二、.one() 有用吗？
+
+你说：
+
+.one() 应该是没用的
+
+其实 非常有用。
+
+代码：
+
+StudyRoom room = lambdaQuery()
+        .eq(StudyRoom::getId, id)
+        .eq(StudyRoom::getStatus, 1)
+        .one();
+
+来源：
+
+
+StudyRoomServiceImpl
+
+.one() 的意思是：
+
+查询一条记录
+
+对应 SQL：
+
+SELECT * 
+FROM study_room
+WHERE id = ?
+AND status = 1
+LIMIT 1
+MyBatis-Plus 常见查询方法
+方法	作用
+one()	查询一条
+list()	查询多条
+count()	统计数量
+page()	分页
+为什么要 .one()
+
+因为：
+
+id 是主键
+
+主键特点：
+
+唯一
+
+所以查询结果：
+
+最多一条
+
+使用 .one() 是最合理的。
+
+三、为什么还要加 status = 1
+
+代码：
+
+.eq(StudyRoom::getStatus, 1)
+
+意思：
+
+只允许查询启用的自习室
+
+数据库结构：
+
+status
+1 启用
+0 禁用
+
+实体类：
+
+private Integer status;
+
+来源：
+
+
+StudyRoom
+
+四、为什么要判断 room == null
+
+代码：
+
+if (room == null) {
+    throw new BusinessException(404, "自习室不存在或已被禁用");
+}
+
+两种情况会触发：
+
+情况1
+id不存在
+
+数据库没有这个自习室。
+
+情况2
+status = 0
+
+自习室被禁用了。
+
+因为查询条件是：
+
+id = ?
+AND status = 1
+五、VO 封装
+
+代码：
+
+StudyRoomVO vo = new StudyRoomVO();
+BeanUtils.copyProperties(room, vo);
+
+作用：
+
+Entity → VO
+
+也就是：
+
+StudyRoom → StudyRoomVO
+
+只用于：
+
+返回给前端
+六、整个接口逻辑总结
+
+接口：
+
+GET /study-room/{id}
+
+执行流程：
+
+1 接收路径参数 id
+2 查询 study_room
+3 条件：
+   id = ?
+   status = 1
+4 如果不存在 → 报错
+5 Entity → VO
+6 返回结果
+七、完整 SQL
+
+实际执行 SQL：
+
+SELECT *
+FROM study_room
+WHERE id = ?
+AND status = 1
+LIMIT 1
+八、你这模块其实真的很简单
+
+自习室模块用户端只有两个接口：
+
+GET /study-room/list
+GET /study-room/{id}
+
+来源：
+
+
+StudyRoomController
+
+作用：
+
+列表
+详情
+九、整个自习室模块真正的意义
+
+它其实只是：
+
+预约模块的入口
+
+用户流程：
+
+查看自习室
+↓
+查看座位
+↓
+预约座位
+
+如果你愿意，我可以帮你把 整个项目（智慧图书馆）的数据库关系图画出来。
+
+这个项目其实只有 7张核心表，一张图就能看懂整个系统。
+
+来源
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

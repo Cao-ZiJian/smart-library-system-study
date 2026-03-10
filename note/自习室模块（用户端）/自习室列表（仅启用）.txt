@@ -1,0 +1,405 @@
+@Api(tags = "自习室模块（用户端）")
+@RestController
+@RequestMapping("/study-room")
+@Validated
+@RequiredArgsConstructor
+public class StudyRoomController {
+
+    private final StudyRoomService studyRoomService;
+
+    @ApiOperation("自习室列表（仅启用）")
+    @GetMapping("/list")
+    public Result<List<StudyRoomVO>> list() {
+        List<StudyRoomVO> list = studyRoomService.listEnabled();
+
+@Cacheable(cacheNames = CACHE_STUDY_ROOM_ENABLED, key = "'list'")
+该注解在redias中CACHE_STUDY_ROOM_ENABLED : 'list'？是这样吗？没啥用啊
+private List<StudyRoomVO> toVOList(List<StudyRoom> list) {
+        return list.stream()
+                .map(room -> {
+                    StudyRoomVO vo = new StudyRoomVO();
+                    BeanUtils.copyProperties(room, vo);
+                    return vo;
+                })
+                .collect(Collectors.toList());
+    }这个tovo竟然没做null情况，有问题的
+生心爱的没啥好说的
+
+
+好，我把**我们刚才聊的那一整段知识点（Spring Cache、`@Cacheable`、`#`、`' '`、Redis key/value）整理成一段清晰的笔记**。这一段你可以直接放到你的项目复盘笔记里。
+
+---
+
+# Spring Cache（@Cacheable）知识点总结
+
+## 1. `@Cacheable` 的作用
+
+`@Cacheable` 用于 **缓存方法返回值**。
+
+基本作用：
+
+```
+1 调用方法前先查缓存
+2 如果缓存存在 → 直接返回
+3 如果缓存不存在 → 执行方法
+4 将方法返回值存入缓存
+```
+
+等价伪代码：
+
+```java
+Object cache = redis.get(key);
+
+if(cache != null){
+    return cache;
+}
+
+Object result = 方法执行();
+
+redis.set(key, result);
+
+return result;
+```
+
+---
+
+# 2. `@Cacheable` 常见写法
+
+```java
+@Cacheable(cacheNames="room", key="'list'")
+public List<StudyRoomVO> listEnabled()
+```
+
+参数说明：
+
+| 参数         | 含义     |
+| ---------- | ------ |
+| cacheNames | 缓存名称   |
+| key        | 缓存 key |
+
+---
+
+# 3. Redis 中的 key 规则
+
+Spring Cache 默认规则：
+
+```
+key = cacheNames::key
+```
+
+例如：
+
+```java
+@Cacheable(cacheNames="room", key="'list'")
+```
+
+Redis：
+
+```
+room::list
+```
+
+---
+
+# 4. Redis 中存储的数据
+
+Redis结构：
+
+```
+key → value
+```
+
+其中：
+
+```
+key   = room::list
+value = 方法返回值
+```
+
+例如：
+
+```
+room::list → List<StudyRoomVO>
+```
+
+所以：
+
+**缓存的是方法返回值，而不是 SQL。**
+
+---
+
+# 5. `'list'` 的含义
+
+写法：
+
+```java
+key="'list'"
+```
+
+含义：
+
+```
+字符串常量 list
+```
+
+Redis key：
+
+```
+room::list
+```
+
+如果写：
+
+```
+'abc'
+```
+
+Redis：
+
+```
+room::abc
+```
+
+---
+
+# 6. `#` 的作用
+
+`#` 用于 **引用方法参数**。
+
+示例：
+
+```java
+@Cacheable(cacheNames="room", key="#id")
+public StudyRoom detail(Long id)
+```
+
+调用：
+
+```
+detail(5)
+```
+
+Redis：
+
+```
+room::5
+```
+
+---
+
+# 7. `#` 常见写法
+
+| 写法         | 含义      |
+| ---------- | ------- |
+| `#id`      | 方法参数 id |
+| `#user.id` | 参数对象属性  |
+| `#p0`      | 第一个参数   |
+| `#p1`      | 第二个参数   |
+
+---
+
+# 8. `' '` 和 `#` 的区别
+
+| 写法       | 含义        |
+| -------- | --------- |
+| `'list'` | 固定字符串 key |
+| `#id`    | 参数作为 key  |
+
+例如：
+
+```
+'list' → room::list
+#id → room::5
+```
+
+---
+
+# 9. 为什么 `listEnabled()` 用 `'list'`
+
+方法：
+
+```java
+listEnabled()
+```
+
+没有参数。
+
+所以只能使用：
+
+```
+固定 key
+```
+
+例如：
+
+```
+'list'
+```
+
+Redis：
+
+```
+room::list
+```
+
+---
+
+# 10. `@Cacheable` 实际底层机制
+
+Spring 使用 **AOP 方法拦截** 实现缓存。
+
+执行流程：
+
+```
+方法调用
+↓
+Spring Cache 拦截
+↓
+查询 Redis
+↓
+有缓存 → 返回
+↓
+没有缓存 → 执行方法
+↓
+缓存返回值
+```
+
+---
+
+# 11. 适合缓存的场景
+
+适用于：
+
+```
+读多写少
+数据变化少
+访问频繁
+```
+
+例如：
+
+```
+配置表
+字典表
+菜单
+地区
+自习室列表
+```
+
+---
+
+# 12. 缓存更新问题
+
+如果数据发生变化：
+
+```
+新增
+删除
+修改
+```
+
+需要清缓存：
+
+```
+@CacheEvict
+```
+
+否则：
+
+```
+Redis 仍然是旧数据
+```
+
+---
+
+# 13. 一句话总结
+
+Spring Cache 规则：
+
+```
+key   = cacheNames::key
+value = 方法返回值
+```
+
+其中：
+
+```
+'xxx'  → 固定 key
+#xxx   → 参数 key
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

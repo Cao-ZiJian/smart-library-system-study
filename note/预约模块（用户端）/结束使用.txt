@@ -1,0 +1,177 @@
+（慎重看解释，正确性待商榷，冲突以纠正栏为准）：
+@ApiOperation("结束使用")
+    @PostMapping("/finish")
+    public Result<Void> finish(@RequestAttribute("currentUserId") Long currentUserId,
+                               @Valid @RequestBody ReservationFinishRequest request) 
+@Override
+    @Transactional(rollbackFor = Exception.class)
+    public void finish(Long userId, ReservationFinishRequest request) {
+        Reservation reservation = getById(request.getReservationId());
+        if (reservation == null) {
+            throw new BusinessException("预约记录不存在");
+        }
+        if (!userId.equals(reservation.getUserId())) {
+            throw new BusinessException("只能结束自己的预约");
+        }
+        if (!ReservationStatusEnum.IN_USE.getCode().equals(reservation.getStatus())) {
+            throw new BusinessException("当前状态不可结束使用");
+        }
+
+        reservation.setStatus(ReservationStatusEnum.FINISHED.getCode());
+        reservation.setFinishTime(LocalDateTime.now());
+
+        if (!updateById(reservation)) {
+            throw new BusinessException("结束使用失败，请稍后重试");
+        }
+    }这代码逻辑和之前相等，过于简单
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

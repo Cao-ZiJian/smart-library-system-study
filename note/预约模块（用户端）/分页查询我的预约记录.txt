@@ -1,0 +1,145 @@
+@ApiOperation("分页查询我的预约记录")
+    @GetMapping("/page")
+    public Result<Page<ReservationVO>> page(@RequestAttribute("currentUserId") Long currentUserId,
+                                            @Valid ReservationPageRequest request) 
+ @Override
+    public Page<ReservationVO> pageMyReservations(Long userId, ReservationPageRequest request) {
+        Page<Reservation> page = new Page<>(request.getPageNum(), request.getPageSize());
+
+        Page<Reservation> reservationPage = lambdaQuery()
+                .eq(Reservation::getUserId, userId)
+                .eq(request.getStatus() != null, Reservation::getStatus, request.getStatus())
+                .orderByDesc(Reservation::getStartTime)
+desc是降序吧？
+                .page(page);
+ List<Reservation> records = reservationPage.getRecords();
+        if (records == null || records.isEmpty()) {
+            Page<ReservationVO> emptyPage = new Page<>(reservationPage.getCurrent(),
+                    reservationPage.getSize(), reservationPage.getTotal());
+ emptyPage.setRecords(Collections.emptyList());
+            return emptyPage;
+        }
+Set<Long> seatIds = records.stream()
+                .map(Reservation::getSeatId)
+                .collect(Collectors.toSet());
+ List<Seat> seats = seatMapper.selectBatchIds(seatIds);
+        Map<Long, Seat> seatMap = seats.stream().collect(Collectors.toMap(Seat::getId, s -> s));
+
+        Set<Long> roomIds = seats.stream()
+                .map(Seat::getStudyRoomId)
+                .collect(Collectors.toSet());
+        List<StudyRoom> rooms = studyRoomMapper.selectBatchIds(roomIds);
+        Map<Long, StudyRoom> roomMap = rooms.stream().collect(Collectors.toMap(StudyRoom::getId, r -> r));
+
+        List<ReservationVO> voRecords = records.stream()
+                .map(reservation -> toVO(reservation, seatMap.get(reservation.getSeatId()),
+                        roomMap.get(seatMap.get(reservation.getSeatId()) != null
+                                ? seatMap.get(reservation.getSeatId()).getStudyRoomId()
+                                : null)))
+                .collect(Collectors.toList());
+
+        Page<ReservationVO> voPage = new Page<>(reservationPage.getCurrent(),
+                reservationPage.getSize(), reservationPage.getTotal());
+        voPage.setRecords(voRecords);
+        return voPage;
+太简单了
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,484 @@
+第三天（慎重看解释，正确性待商榷，冲突以纠正栏为准）：
+    @ApiOperation("查询我的借阅记录（分页）")
+    @GetMapping("/page")
+public Result<Page<BorrowOrderVO>> page(@RequestAttribute("currentUserId") Long currentUserId,
+                                            @Valid BorrowPageRequest request) {
+        Page<BorrowOrderVO> pageResult =
+                borrowOrderService.pageUserBorrowOrders(currentUserId, request);
+进入public Page<BorrowOrderVO> pageUserBorrowOrders(Long userId, BorrowPageRequest request) 
+ Page<BorrowOrder> page = new Page<>(request.getPageNum(), request.getPageSize());设置分页工具，所查页数，和每页存储几个对象
+Page<BorrowOrder> orderPage = lambdaQuery()
+                .eq(BorrowOrder::getUserId, userId)
+                .eq(request.getBookId() != null, BorrowOrder::getBookId, request.getBookId())
+                .eq(StringUtils.hasText(request.getStatus()), BorrowOrder::getStatus, request.getStatus())
+                .orderByDesc(BorrowOrder::getApplyTime)
+                .page(page);
+BorrowOrder::getUserId这个参数会导致把表中数据打成java对象，然后取id 用userid对其过滤
+request.getBookId() != null,
+BorrowOrder::getBookId,这个参数会导致把表中数据打成java对象，然后取bookid 用request.getBookId()对其过滤
+StringUtils.hasText(request.getStatus()),
+BorrowOrder::getStatus, 这个参数会导致把表中数据打成java对象，然后取Status 用request.getStatus()对其过滤
+.orderByDesc(BorrowOrder::getApplyTime)
+BorrowOrder::getApplyTime
+个参数会导致把表中数据打成java对象，然后取ApplyTime
+降序排列
+.page(page);用page接受这些java对象
+private Page<BorrowOrderVO> buildOrderVOPage(Page<BorrowOrder> orderPage)
+List<BorrowOrder> records = orderPage.getRecords();
+if (records == null || records.isEmpty()) {
+            Page<BorrowOrderVO> emptyPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
+            emptyPage.setRecords(Collections.emptyList());
+            return emptyPage;
+        }
+Set<Long> userIds = records.stream()
+                .map(BorrowOrder::getUserId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        Set<Long> bookIds = records.stream()
+                .map(BorrowOrder::getBookId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+
+
+
+final Map<Long, User> userMap = userIds.isEmpty()
+                ? Collections.emptyMap()
+                : userService.listByIds(userIds).stream().collect(Collectors.toMap(User::getId, u -> u));
+
+        final Map<Long, Book> bookMap = bookIds.isEmpty()
+                ? Collections.emptyMap()
+                : bookService.listByIds(bookIds).stream().collect(Collectors.toMap(Book::getId, b -> b));
+从final开始就比较迷惑了
+
+
+List<BorrowOrderVO> voRecords = records.stream()
+                .map(order -> toVO(order, userMap.get(order.getUserId()), bookMap.get(order.getBookId())))
+                .collect(Collectors.toList());
+tovo无非封装成vo,但后续参数传递比较迷惑
+ Page<BorrowOrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
+        voPage.setRecords(voRecords);
+        return voPage;
+orderPage.getCurrent()这个参数不知道干什么的
+然后就是返回结果了
+
+
+
+
+
+纠正：
+
+1...查询 borrow_order 表
+
+代码：
+
+Page<BorrowOrder> orderPage = lambdaQuery()
+        .eq(BorrowOrder::getUserId, userId)
+        .eq(request.getBookId() != null,
+            BorrowOrder::getBookId,
+            request.getBookId())
+        .eq(StringUtils.hasText(request.getStatus()),
+            BorrowOrder::getStatus,
+            request.getStatus())
+        .orderByDesc(BorrowOrder::getApplyTime)
+        .page(page);
+
+BorrowOrderServiceImpl
+
+SQL等价：
+
+SELECT *
+FROM borrow_order
+WHERE user_id = ?
+AND book_id = ? (可选)
+AND status = ? (可选)
+ORDER BY apply_time DESC
+LIMIT ?,?
+
+注意一个重要点：
+
+你理解错的一点是：
+
+把表数据转成java对象再过滤
+
+实际上：
+
+过滤是在SQL层完成的。
+
+不是 Java 过滤。
+
+
+2...orderPage.getCurrent() 
+就是：
+当前页码；
+orderPage.getCurrent() 不是没意义
+因为这个接口是：
+@GetMapping("/page")
+public Result<Page<BorrowOrderVO>> page(@RequestAttribute("currentUserId") Long currentUserId,
+                                        @Valid BorrowPageRequest request)
+
+这里 BorrowPageRequest request 不是 @RequestBody，而是 GET 请求参数绑定对象。也就是说，前端一般会这样传：
+
+GET /user/borrow/page?pageNum=1&pageSize=10
+
+然后 Spring 会把：
+
+pageNum=1
+pageSize=10
+
+自动封装进 BorrowPageRequest。接着代码里：
+
+Page<BorrowOrder> page = new Page<>(request.getPageNum(), request.getPageSize());
+
+说明分页对象的“当前页”和“每页大小”本来就是从请求参数来的。后面再创建 voPage 时，把 orderPage.getCurrent()、getSize()、getTotal() 复制过去，是为了 把原分页信息原样带回前端，不然前端只拿到 records，不知道“这是第几页、总共多少条、每页多少条”。
+所以：
+
+orderPage.getCurrent()
+
+就是：
+
+当前这一页的页码
+
+它的意义不是“再查一次页码”，而是：
+
+把分页元信息从 orderPage 复制到 voPage
+
+因为你这里做了类型转换：
+
+Page<BorrowOrder>  ->  Page<BorrowOrderVO>
+
+数据类型变了，但分页信息不能丢。
+
+
+
+
+
+
+
+
+
+
+3...
+final Map<Long, Book> bookMap = bookIds.isEmpty()
+                ? Collections.emptyMap()
+                : bookService.listByIds(bookIds).stream().collect(Collectors.toMap(Book::getId, b -> b));
+这个代码若不空进行的bookService.listByIds(bookIds).stream().collect(Collectors.toMap(Book::getId, b -> b));
+会由于public interface BookService extends IService<Book>自动查@TableName("book")
+public class Book implements Serializable对应的book表
+.listByIds(bookIds)根据各个idlist然后对其封装成book
+.stream()将各个BOOK对象
+collect(Collectors.toMap(Book::getId, b -> b))
+
+final Map<Long, User> userMap = userIds.isEmpty()
+                ? Collections.emptyMap()
+                : userService.listByIds(userIds).stream().collect(Collectors.toMap(User::getId, u -> u));同理
+
+
+4...bookService.listByIds(bookIds)
+
+返回的是：
+
+List<Book>
+
+也就是：
+
+一个 Book 对象的列表
+
+不是 Map
+不是分组
+不是流
+
+就是 List<Book>。
+
+1 举一个最真实的例子
+
+假设数据库 book 表里有：
+
+id	title
+10	Java核心技术
+20	Spring实战
+30	MySQL必知必会
+
+现在代码里：
+
+Set<Long> bookIds = [10,20,30];
+
+执行：
+
+bookService.listByIds(bookIds)
+
+MyBatis-Plus 会执行 SQL：
+
+select * from book where id in (10,20,30)
+
+数据库返回 3 行数据。
+
+2 MyBatis 把每一行变成一个对象
+
+每一行数据会被映射成一个 Book 对象：
+
+Book book1 = new Book();
+book1.setId(10);
+book1.setTitle("Java核心技术");
+
+Book book2 = new Book();
+book2.setId(20);
+book2.setTitle("Spring实战");
+
+Book book3 = new Book();
+book3.setId(30);
+book3.setTitle("MySQL必知必会");
+3 然后放进 List
+
+最后返回：
+
+List<Book> books = [
+   book1,
+   book2,
+   book3
+];
+
+也就是：
+
+List<Book>
+
+里面有多个 Book 对象。
+
+4 为什么我之前写成这样
+
+我之前写：
+
+[
+  Book{id=10,title=Java核心技术},
+  Book{id=20,title=Spring实战},
+  Book{id=30,title=MySQL必知必会}
+]
+
+只是为了让你 看清 List 里有几个对象。
+
+真实类型是：
+
+List<Book>
+5 接下来 .stream() 是干嘛
+
+现在你有：
+
+List<Book>
+
+接下来代码：
+
+.stream()
+
+只是把 List 变成：
+
+Stream<Book>
+
+方便后面做转换。
+
+6 最终 .collect(toMap()) 才是关键
+.collect(Collectors.toMap(Book::getId, b -> b))
+
+这一步才把：
+
+List<Book>
+
+变成：
+
+Map<Long,Book>
+
+例如：
+
+10 → Book{id=10,title=Java核心技术}
+20 → Book{id=20,title=Spring实战}
+30 → Book{id=30,title=MySQL必知必会}
+
+
+
+
+5...final 是干啥的？
+
+先给你一句最核心的答案：
+
+final = 变量只能赋值一次，不能再指向别的对象
+
+注意：
+
+限制的是变量的“引用”，不是对象内容。
+
+一、先看没有 final 的情况
+Map<Long, Book> bookMap = new HashMap<>();
+
+bookMap = new HashMap<>();   // 可以
+bookMap = null;              // 也可以
+
+变量 bookMap 可以 重新指向别的对象。
+
+二、加了 final
+final Map<Long, Book> bookMap = new HashMap<>();
+
+就变成：
+
+bookMap = new HashMap<>(); // ❌ 编译错误
+bookMap = null;            // ❌ 编译错误
+
+因为：
+
+bookMap 只能被赋值一次
+
+也就是：
+
+bookMap → 这个 Map 对象
+
+这个 指向不能变。
+
+三、但是 Map 里面的内容可以改
+
+这是很多人误解的地方。
+
+final Map<Long, Book> bookMap = new HashMap<>();
+
+bookMap.put(1, book);  // ✔ 可以
+bookMap.remove(1);     // ✔ 可以
+
+因为：
+
+Map 对象没变
+只是内部数据变了
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
