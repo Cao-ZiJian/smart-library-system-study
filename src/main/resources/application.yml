@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: smart-library-borrow-reservation
+
+  profiles:
+    active: dev
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+server:
+  port: 18080
+  servlet:
+    context-path: /api
+
+logging:
+  level:
+    root: info
+    com.example.library: debug
+
+# Authentication: JWT is the client credential, Redis Session stores server-side login state.
+auth:
+  session:
+    ttl-minutes: 120
+    renew-threshold-seconds: 600
+  jwt:
+    secret: your-256-bit-secret-key-change-me-please-123456
+    blacklist-ttl-seconds: 7200
+
+knife4j:
+  enable: true
+
+# OSS basic image upload for user avatars and book covers.
+# Replace these placeholders locally or inject values through environment-specific configuration.
+oss:
+  endpoint: https://oss-cn-hangzhou.aliyuncs.com
+  access-key-id: your-access-key-id
+  access-key-secret: your-access-key-secret
+  bucket: your-bucket-name
+  domain: ""
+  max-file-size-bytes: 5242880

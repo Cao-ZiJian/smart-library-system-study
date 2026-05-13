@@ -1,0 +1,25 @@
+# 测试 profile：关闭定时任务；OSS 为强依赖，此处提供仅用于集成测试占位值（非真实密钥）
+spring:
+  task:
+    scheduling:
+      enabled: false
+
+oss:
+  endpoint: https://oss-cn-hangzhou.aliyuncs.com
+  access-key-id: it-test-access-key-id
+  access-key-secret: it-test-access-key-secret
+  bucket: it-test-bucket
+  domain: ""
+  max-file-size-bytes: 5242880
+
+knife4j:
+  enable: false
+
+logging:
+  level:
+    root: warn
+    com.example.library: info
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl

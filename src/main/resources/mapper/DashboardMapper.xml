@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.library.mapper.DashboardMapper">
+
+    <select id="countBookTotal" resultType="long">
+        SELECT COUNT(*) FROM book
+    </select>
+
+    <select id="countBookOnShelf" resultType="long">
+        SELECT COUNT(*) FROM book WHERE status = 1
+    </select>
+
+    <select id="countBookBorrowable" resultType="long">
+        SELECT COUNT(*) FROM book WHERE status = 1 AND available_stock > 0
+    </select>
+
+    <select id="countUserTotal" resultType="long">
+        SELECT COUNT(*) FROM user
+    </select>
+
+    <select id="countTodayBorrowApply" resultType="long">
+        SELECT COUNT(*) FROM borrow_order WHERE DATE(apply_time) = CURDATE()
+    </select>
+
+    <select id="countTodayLend" resultType="long">
+        SELECT COUNT(*) FROM borrow_order WHERE lend_time IS NOT NULL AND DATE(lend_time) = CURDATE()
+    </select>
+
+    <select id="countTodayReturn" resultType="long">
+        SELECT COUNT(*) FROM borrow_order WHERE return_time IS NOT NULL AND DATE(return_time) = CURDATE()
+    </select>
+
+    <select id="countTodayReservation" resultType="long">
+        SELECT COUNT(*) FROM reservation WHERE DATE(create_time) = CURDATE()
+    </select>
+
+    <select id="countCurrentOverdue" resultType="long">
+        SELECT COUNT(*) FROM borrow_order WHERE status = 'OVERDUE'
+    </select>
+
+    <select id="countSeatInUse" resultType="long">
+        SELECT COUNT(DISTINCT seat_id) FROM reservation WHERE status = 'IN_USE'
+    </select>
+
+    <select id="selectHotBooks" resultType="com.example.library.vo.dashboard.HotBookBriefVO">
+        SELECT id AS bookId, title, borrow_count AS borrowCount
+        FROM book
+        WHERE status = 1
+        ORDER BY borrow_count DESC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectStudyRoomUtilizationTop" resultType="com.example.library.vo.dashboard.StudyRoomUtilizationVO">
+        SELECT sr.id AS studyRoomId,
+               sr.name AS studyRoomName,
+               sr.capacity AS capacity,
+               COALESCE(occ.cnt, 0) AS occupiedSeats,
+               CASE
+                   WHEN sr.capacity IS NULL OR sr.capacity = 0 THEN 0
+                   ELSE ROUND(COALESCE(occ.cnt, 0) * 100.0 / sr.capacity, 2)
+                   END AS utilizationRate
+        FROM study_room sr
+                 LEFT JOIN (
+            SELECT s.study_room_id AS rid, COUNT(DISTINCT r.seat_id) AS cnt
+            FROM reservation r
+                     INNER JOIN seat s ON r.seat_id = s.id
+            WHERE r.status IN ('PENDING_CHECK_IN', 'IN_USE')
+              AND r.end_time > NOW()
+            GROUP BY s.study_room_id
+        ) occ ON occ.rid = sr.id
+        WHERE sr.status = 1
+        ORDER BY utilizationRate DESC, occupiedSeats DESC
+        LIMIT #{limit}
+    </select>
+</mapper>
