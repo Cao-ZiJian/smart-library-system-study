@@ -7,20 +7,20 @@ import com.example.library.enums.UserRole;
 import com.example.library.result.Result;
 import com.example.library.service.OperationLogService;
 import com.example.library.vo.OperationLogVO;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 
 /**
  * 操作日志查询接口。
  */
-@Api(tags = "核心-操作日志")
+@Tag(name = "核心-操作日志")
 @RestController
 @RequestMapping("/admin/operation-log")
 @Validated
@@ -30,7 +30,7 @@ public class OperationLogAdminController {
 
     private final OperationLogService operationLogService;
 
-    @ApiOperation("操作日志分页：查看 AOP 记录的关键业务操作")
+    @Operation(summary = "操作日志分页：查看 AOP 记录的关键业务操作")
     @GetMapping("/page")
     public Result<Page<OperationLogVO>> page(@Valid OperationLogPageRequest request) {
         Page<OperationLogVO> pageResult = operationLogService.pageLogs(request);

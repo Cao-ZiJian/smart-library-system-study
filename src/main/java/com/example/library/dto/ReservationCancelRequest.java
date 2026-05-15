@@ -2,7 +2,7 @@ package com.example.library.dto;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 
 /**
  * 取消预约请求参数

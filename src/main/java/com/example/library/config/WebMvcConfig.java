@@ -29,11 +29,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/auth/register",
                         "/auth/admin/login",
 
-                        // Knife4j & Swagger 相关
-                        "/doc.html",
-                        "/webjars/**",
-                        "/swagger-resources/**",
-                        "/v2/api-docs",
+                        // OpenAPI 3 & Swagger UI 相关
+                        "/swagger-ui.html",
+                        "/swagger-ui/**",
+                        "/v3/api-docs/**",
 
                         // 其他公共资源
                         "/error"
