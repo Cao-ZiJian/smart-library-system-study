@@ -8,16 +8,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.reflect.MethodSignature;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.lang.annotation.Annotation;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,8 +44,8 @@ public class OperationLogAspect {
     private static final int MAX_REQUEST_PARAM_LENGTH = 2000;
     private static final int MAX_ERROR_MSG_LENGTH = 500;
     private static final Set<String> SENSITIVE_KEYS = new LinkedHashSet<>(Arrays.asList(
-            "password", "oldPassword", "newPassword", "confirmPassword",
-            "accessToken", "token", "authorization", "secret", "accessKeySecret"
+            "password", "oldpassword", "newpassword", "confirmpassword",
+            "accesstoken", "refreshtoken", "token", "authorization", "secret", "accesskeysecret"
     ));
 
     private final OperationLogService operationLogService;
@@ -63,7 +66,7 @@ public class OperationLogAspect {
             logEntity.setRequestMethod(request.getMethod());
             logEntity.setIp(getClientIp(request));
             fillUserInfo(logEntity);
-            logEntity.setRequestParams(buildRequestParams(request, joinPoint.getArgs()));
+            logEntity.setRequestParams(buildRequestParams(request, joinPoint));
         }
 
         long startNano = System.nanoTime();
@@ -91,7 +94,7 @@ public class OperationLogAspect {
         }
     }
 
-    private String buildRequestParams(HttpServletRequest request, Object[] args) {
+    private String buildRequestParams(HttpServletRequest request, ProceedingJoinPoint joinPoint) {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
 
@@ -114,7 +117,7 @@ public class OperationLogAspect {
                 payload.put("query", query);
             }
 
-            Object bodyArg = resolveBodyArg(args);
+            Object bodyArg = resolveBodyArg(joinPoint);
             if (bodyArg != null) {
                 payload.put("body", sanitizeObject(objectMapper.convertValue(bodyArg, Object.class)));
             }
@@ -129,9 +132,14 @@ public class OperationLogAspect {
         }
     }
 
-    private Object resolveBodyArg(Object[] args) {
+    private Object resolveBodyArg(ProceedingJoinPoint joinPoint) {
+        Object[] args = joinPoint.getArgs();
         if (args == null || args.length == 0) {
             return null;
+        }
+        Object annotatedBody = resolveRequestBodyArg(joinPoint, args);
+        if (annotatedBody != null) {
+            return annotatedBody;
         }
         for (Object arg : args) {
             if (arg == null) {
@@ -141,6 +149,21 @@ public class OperationLogAspect {
                 continue;
             }
             return arg;
+        }
+        return null;
+    }
+
+    private Object resolveRequestBodyArg(ProceedingJoinPoint joinPoint, Object[] args) {
+        if (!(joinPoint.getSignature() instanceof MethodSignature methodSignature)) {
+            return null;
+        }
+        Annotation[][] parameterAnnotations = methodSignature.getMethod().getParameterAnnotations();
+        for (int i = 0; i < parameterAnnotations.length && i < args.length; i++) {
+            for (Annotation annotation : parameterAnnotations[i]) {
+                if (annotation.annotationType() == RequestBody.class) {
+                    return args[i];
+                }
+            }
         }
         return null;
     }

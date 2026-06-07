@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.web.server.LocalServerPort;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -24,6 +24,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import javax.sql.DataSource;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -124,6 +128,19 @@ public abstract class AbstractLibraryIntegrationTest {
         return restTemplate.exchange(base() + path, HttpMethod.PUT, new HttpEntity<>(jsonBody, headers), String.class);
     }
 
+    protected JsonNode patchJson(String path, String token, String jsonBody) throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(base() + path))
+                .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(jsonBody));
+        if (token != null) {
+            builder.header("Authorization", "Bearer " + token);
+        }
+        HttpResponse<String> response = HttpClient.newHttpClient()
+                .send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        return objectMapper.readTree(response.body());
+    }
+
     protected JsonNode deleteJson(String path, String token) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         if (token != null) {
@@ -134,18 +151,31 @@ public abstract class AbstractLibraryIntegrationTest {
     }
 
     protected String login(String username, String password) throws Exception {
+        return loginTokens(username, password).accessToken();
+    }
+
+    protected TokenPair loginTokens(String username, String password) throws Exception {
         String body = "{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         ResponseEntity<String> resp = restTemplate.postForEntity(base() + "/auth/login", new HttpEntity<>(body, headers), String.class);
         JsonNode root = objectMapper.readTree(resp.getBody());
         assertEquals(0, root.get("code").asInt(), root.toString());
-        return root.get("data").asText();
+        JsonNode data = root.get("data");
+        return new TokenPair(
+                data.get("accessToken").asText(),
+                data.get("refreshToken").asText(),
+                data.get("tokenType").asText(),
+                data.get("expiresIn").asLong()
+        );
     }
 
     protected static HttpHeaders bearer(String token) {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(token);
         return h;
+    }
+
+    protected record TokenPair(String accessToken, String refreshToken, String tokenType, long expiresIn) {
     }
 }

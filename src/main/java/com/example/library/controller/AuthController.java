@@ -1,12 +1,14 @@
 package com.example.library.controller;
 
 import com.example.library.context.UserContext;
+import com.example.library.dto.RefreshTokenRequest;
 import com.example.library.dto.UserAvatarUpdateRequest;
 import com.example.library.dto.UserLoginRequest;
 import com.example.library.dto.UserRegisterRequest;
 import com.example.library.result.Result;
 import com.example.library.service.UserService;
 import com.example.library.session.SessionManager;
+import com.example.library.vo.AuthTokenVO;
 import com.example.library.vo.UserVO;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
@@ -53,9 +55,15 @@ public class AuthController {
      */
     @Operation(summary = "登录并创建 Redis Session：返回 JWT accessToken")
     @PostMapping("/login")
-    public Result<String> login(@Valid @RequestBody UserLoginRequest request) {
-        String token = userService.login(request);
+    public Result<AuthTokenVO> login(@Valid @RequestBody UserLoginRequest request) {
+        AuthTokenVO token = userService.login(request);
         return Result.success(token);
+    }
+
+    @Operation(summary = "Refresh access token")
+    @PostMapping("/refresh")
+    public Result<AuthTokenVO> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        return Result.success(sessionManager.refresh(request.getRefreshToken()));
     }
 
     /**
@@ -94,7 +102,6 @@ public class AuthController {
         return Result.success();
     }
 }
-
 
 
 

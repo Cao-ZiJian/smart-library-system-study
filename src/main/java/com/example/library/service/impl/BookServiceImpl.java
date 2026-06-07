@@ -135,8 +135,10 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
 
         Page<Book> bookPage = lambdaQuery()
                 .eq(Book::getStatus, 1)
-                .eq(request.getCategoryId() != null, Book::getCategoryId, request.getCategoryId())
-                .like(StringUtils.hasText(request.getKeyword()), Book::getTitle, request.getKeyword())
+                .eq(request.getCategoryId() != null,
+                        Book::getCategoryId, request.getCategoryId())
+                .like(StringUtils.hasText(request.getKeyword()),
+                        Book::getTitle, request.getKeyword())
                 .orderByDesc(Book::getCreateTime)
                 .page(page);
 
@@ -211,7 +213,8 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     private Page<BookVO> buildBookVOPage(Page<Book> bookPage) {
         List<Book> records = bookPage.getRecords();
         if (records == null || records.isEmpty()) {
-            Page<BookVO> emptyPage = new Page<>(bookPage.getCurrent(), bookPage.getSize(), bookPage.getTotal());
+            Page<BookVO> emptyPage =
+                    new Page<>(bookPage.getCurrent(), bookPage.getSize(), bookPage.getTotal());
             emptyPage.setRecords(Collections.emptyList());
             return emptyPage;
         }

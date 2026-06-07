@@ -34,11 +34,15 @@ class LibraryFullStackIT extends AbstractLibraryIntegrationTest {
 
     @Test
     @Order(10)
-    @DisplayName("登录成功返回 JWT accessToken")
+    @DisplayName("Login returns accessToken and refreshToken")
     void loginSuccess_jwtAccessToken() throws Exception {
-        String token = login("user01", "123456");
-        assertTrue(token.length() > 100, "应返回 JWT accessToken");
-        assertEquals(2, token.chars().filter(c -> c == '.').count(), "JWT 应为三段点分结构");
+        TokenPair tokens = loginTokens("user01", "123456");
+        assertTrue(tokens.accessToken().length() > 100);
+        assertTrue(tokens.refreshToken().length() > 100);
+        assertEquals("Bearer", tokens.tokenType());
+        assertEquals(1800L, tokens.expiresIn());
+        assertEquals(2, tokens.accessToken().chars().filter(c -> c == '.').count());
+        assertEquals(2, tokens.refreshToken().chars().filter(c -> c == '.').count());
     }
 
     @Test

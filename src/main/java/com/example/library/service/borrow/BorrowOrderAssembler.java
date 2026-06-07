@@ -55,7 +55,8 @@ public class BorrowOrderAssembler {
                 .collect(Collectors.toMap(Book::getId, b -> b, (left, right) -> left));
 
         List<BorrowOrderVO> voRecords = records.stream()
-                .map(order -> toVO(order, userMap.get(order.getUserId()), bookMap.get(order.getBookId())))
+                .map(order ->
+                        toVO(order, userMap.get(order.getUserId()), bookMap.get(order.getBookId())))
                 .collect(Collectors.toList());
 
         Page<BorrowOrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());

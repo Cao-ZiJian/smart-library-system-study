@@ -4,9 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * 登录会话在 Redis 中的存储结构（JWT jti 对应的服务端状态）
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -15,13 +12,19 @@ public class LoginSession {
     private Long userId;
     private String username;
     private String role;
-    /**
-     * 登录时快照，便于审计；鉴权以数据库为准
-     */
-    private Integer userStatusSnapshot;
-    private long loginTimeMillis;
-    /**
-     * 与 user.token_version 对齐，后台变更可一次性踢掉旧会话
-     */
+    private String sessionJti;
+    private String refreshJti;
     private int tokenVersion;
+    private long createTime;
+    private long lastActiveTime;
+
+    public LoginSession(Long userId, String username, String role, Integer userStatusSnapshot,
+                        long loginTimeMillis, int tokenVersion) {
+        this.userId = userId;
+        this.username = username;
+        this.role = role;
+        this.tokenVersion = tokenVersion;
+        this.createTime = loginTimeMillis;
+        this.lastActiveTime = loginTimeMillis;
+    }
 }

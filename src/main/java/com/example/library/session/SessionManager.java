@@ -1,23 +1,23 @@
 package com.example.library.session;
 
 import com.example.library.entity.User;
+import com.example.library.vo.AuthTokenVO;
 
-/**
- * 统一登录会话管理边界：JWT、Redis TTL、黑名单和 tokenVersion 校验均在此收口。
- */
 public interface SessionManager {
 
-    String createSession(User user);
+    AuthTokenVO createSession(User user);
 
-    LoginSession getSessionByJti(String jti);
+    AuthTokenVO refresh(String refreshToken);
+
+    LoginSession getSessionByJti(String sessionJti);
 
     void removeSession(String accessToken);
 
-    void removeSessionByJti(String jti);
+    void removeSessionByJti(String sessionJti);
 
-    void renewIfNeededByJti(String jti);
+    void renewIfNeededByJti(String sessionJti);
 
-    boolean isBlacklistedJti(String jti);
+    boolean isBlacklistedJti(String accessJti);
 
     AuthenticatedSession authenticate(String accessToken);
 }

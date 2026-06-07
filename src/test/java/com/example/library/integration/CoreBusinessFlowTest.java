@@ -166,28 +166,61 @@ class CoreBusinessFlowTest extends AbstractLibraryIntegrationTest {
     @Test
     @DisplayName("Auth boundary: login, me, logout blacklist, tokenVersion, and disabled user")
     void authBoundary_invalidatesOldTokens() throws Exception {
-        String token = login("user01", "123456");
+        TokenPair tokens = loginTokens("user01", "123456");
+        String token = tokens.accessToken();
         ResponseEntity<String> me = restTemplate.exchange(base() + "/auth/me", HttpMethod.GET,
                 new HttpEntity<>(bearer(token)), String.class);
         assertEquals(HttpStatus.OK, me.getStatusCode());
+
+        ResponseEntity<String> refreshAsBusinessToken = restTemplate.exchange(base() + "/auth/me", HttpMethod.GET,
+                new HttpEntity<>(bearer(tokens.refreshToken())), String.class);
+        assertEquals(HttpStatus.UNAUTHORIZED, refreshAsBusinessToken.getStatusCode());
+
+        JsonNode accessCannotRefresh = postJson("/auth/refresh", null,
+                "{\"refreshToken\":\"" + token + "\"}");
+        assertTrue(accessCannotRefresh.get("code").asInt() != 0);
+
+        JsonNode refreshed = postJson("/auth/refresh", null,
+                "{\"refreshToken\":\"" + tokens.refreshToken() + "\"}");
+        assertEquals(0, refreshed.get("code").asInt(), refreshed.toString());
+        String rotatedAccess = refreshed.get("data").get("accessToken").asText();
+        String rotatedRefresh = refreshed.get("data").get("refreshToken").asText();
+        assertTrue(rotatedAccess.length() > 100);
+        assertTrue(rotatedRefresh.length() > 100);
+
+        JsonNode oldRefreshReuse = postJson("/auth/refresh", null,
+                "{\"refreshToken\":\"" + tokens.refreshToken() + "\"}");
+        assertTrue(oldRefreshReuse.get("code").asInt() != 0);
 
         restTemplate.postForEntity(base() + "/auth/logout", new HttpEntity<>(bearer(token)), String.class);
         ResponseEntity<String> afterLogout = restTemplate.exchange(base() + "/auth/me", HttpMethod.GET,
                 new HttpEntity<>(bearer(token)), String.class);
         assertEquals(HttpStatus.UNAUTHORIZED, afterLogout.getStatusCode());
 
-        String tokenBeforeVersionChange = login("user01", "123456");
+        TokenPair logoutTokens = loginTokens("user01", "123456");
+        restTemplate.postForEntity(base() + "/auth/logout", new HttpEntity<>(bearer(logoutTokens.accessToken())), String.class);
+        JsonNode refreshAfterLogout = postJson("/auth/refresh", null,
+                "{\"refreshToken\":\"" + logoutTokens.refreshToken() + "\"}");
+        assertTrue(refreshAfterLogout.get("code").asInt() != 0);
+
+        TokenPair beforeVersionChange = loginTokens("user01", "123456");
         jdbcTemplate.update("UPDATE user SET token_version = token_version + 1 WHERE id = 3");
         ResponseEntity<String> afterVersionChange = restTemplate.exchange(base() + "/auth/me", HttpMethod.GET,
-                new HttpEntity<>(bearer(tokenBeforeVersionChange)), String.class);
+                new HttpEntity<>(bearer(beforeVersionChange.accessToken())), String.class);
         assertEquals(HttpStatus.UNAUTHORIZED, afterVersionChange.getStatusCode());
+        JsonNode refreshAfterVersionChange = postJson("/auth/refresh", null,
+                "{\"refreshToken\":\"" + beforeVersionChange.refreshToken() + "\"}");
+        assertTrue(refreshAfterVersionChange.get("code").asInt() != 0);
 
         jdbcTemplate.update("UPDATE user SET token_version = 0, status = 1 WHERE id = 3");
-        String tokenBeforeDisable = login("user01", "123456");
+        TokenPair beforeDisable = loginTokens("user01", "123456");
         jdbcTemplate.update("UPDATE user SET status = 0 WHERE id = 3");
         ResponseEntity<String> afterDisable = restTemplate.exchange(base() + "/auth/me", HttpMethod.GET,
-                new HttpEntity<>(bearer(tokenBeforeDisable)), String.class);
-        assertEquals(HttpStatus.UNAUTHORIZED, afterDisable.getStatusCode());
+                new HttpEntity<>(bearer(beforeDisable.accessToken())), String.class);
+        assertEquals(HttpStatus.FORBIDDEN, afterDisable.getStatusCode());
+        JsonNode refreshAfterDisable = postJson("/auth/refresh", null,
+                "{\"refreshToken\":\"" + beforeDisable.refreshToken() + "\"}");
+        assertTrue(refreshAfterDisable.get("code").asInt() != 0);
     }
 
     private JsonNode lend(String token, Long orderId) throws Exception {

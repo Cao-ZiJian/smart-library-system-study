@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.example.library.dto.UserLoginRequest;
 import com.example.library.dto.UserRegisterRequest;
 import com.example.library.entity.User;
+import com.example.library.vo.AuthTokenVO;
 import com.example.library.vo.UserVO;
 
 /**
@@ -24,7 +25,7 @@ public interface UserService extends IService<User> {
      * @param request 登录参数
      * @return 短 accessToken（Bearer），服务端状态在 Redis
      */
-    String login(UserLoginRequest request);
+    AuthTokenVO login(UserLoginRequest request);
 
     /**
      * 查询当前登录用户信息
@@ -39,4 +40,3 @@ public interface UserService extends IService<User> {
      */
     void updateAvatar(Long userId, String avatarUrl);
 }
-

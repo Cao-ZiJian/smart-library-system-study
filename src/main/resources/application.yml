@@ -27,7 +27,9 @@ logging:
 # Authentication: JWT is the client credential, Redis Session stores server-side login state.
 auth:
   session:
-    ttl-minutes: 120
+    ttl-minutes: 30
+    access-token-ttl-minutes: 30
+    refresh-token-ttl-days: 7
     renew-threshold-seconds: 600
   jwt:
     secret: your-256-bit-secret-key-change-me-please-123456

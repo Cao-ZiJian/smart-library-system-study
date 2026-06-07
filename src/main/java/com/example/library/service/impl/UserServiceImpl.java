@@ -8,6 +8,7 @@ import com.example.library.exception.BusinessException;
 import com.example.library.mapper.UserMapper;
 import com.example.library.service.UserService;
 import com.example.library.session.SessionManager;
+import com.example.library.vo.AuthTokenVO;
 import com.example.library.vo.UserVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -39,7 +40,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setNickname(StringUtils.hasText(request.getNickname()) ? request.getNickname() : request.getUsername());
+        user.setNickname(StringUtils.hasText(request.getNickname())
+                ? request.getNickname() : request.getUsername());
         user.setPhone(request.getPhone());
         user.setEmail(request.getEmail());
         user.setRole("USER");
@@ -55,7 +57,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     @Override
-    public String login(UserLoginRequest request) {
+    public AuthTokenVO login(UserLoginRequest request) {
         User user = lambdaQuery()
                 .eq(User::getUsername, request.getUsername())
                 .one();

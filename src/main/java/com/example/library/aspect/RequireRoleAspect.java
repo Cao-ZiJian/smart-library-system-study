@@ -17,10 +17,10 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 统一角色校验，替代 Controller 内手写 if。
+ * 统一角色校验切面。
  *
- * 当前项目保持轻量显式授权：接口允许哪些角色，就在 @RequireRole 中列出哪些角色。
- * 不做 ADMIN 自动继承 LIBRARIAN/USER 的层级推导，避免实习项目引入过重 RBAC 复杂度。
+ * 采用显式角色授权策略：接口允许的角色由 @RequireRole 直接声明。
+ * 系统不进行角色层级推导，避免隐式权限扩散。
  */
 @Aspect
 @Component

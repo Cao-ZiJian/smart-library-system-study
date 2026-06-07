@@ -7,6 +7,7 @@ import com.example.library.service.OperationLogService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.Signature;
+import org.aspectj.lang.reflect.MethodSignature;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.util.ReflectionUtils;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -27,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -71,6 +75,8 @@ class OperationLogAspectTest {
         body.setTitle("clean-code");
         body.setPassword("123456");
         body.setAccessToken("bearer-token");
+        body.setRefreshToken("refresh-token");
+        body.setNewPassword("new-password");
 
         when(joinPoint.getArgs()).thenReturn(new Object[]{body});
         when(joinPoint.getSignature()).thenReturn(signature);
@@ -90,6 +96,41 @@ class OperationLogAspectTest {
         assertTrue(log.getRequestParams().contains("******"));
         assertTrue(log.getRequestParams().contains("password") || log.getRequestParams().contains("token") || log.getRequestParams().contains("accessToken"));
         assertTrue(log.getRequestParams().contains("clean-code"));
+        assertTrue(!log.getRequestParams().contains("bearer-token"));
+        assertTrue(!log.getRequestParams().contains("refresh-token"));
+        assertTrue(!log.getRequestParams().contains("new-password"));
+    }
+
+    @Test
+    void around_prefersRequestBodyArgOverPathVariable() throws Throwable {
+        MockHttpServletRequest request = new MockHttpServletRequest("PATCH", "/api/admin/users/3/password");
+        request.setContentType("application/json");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        DemoRequest body = new DemoRequest();
+        body.setTitle("body-title");
+        body.setNewPassword("new-password");
+
+        Method method = ReflectionUtils.findMethod(DemoController.class, "updatePassword", Long.class, DemoRequest.class);
+        MethodSignature methodSignature = mock(MethodSignature.class);
+        when(methodSignature.getMethod()).thenReturn(method);
+        when(methodSignature.toLongString()).thenReturn("updatePassword(Long, DemoRequest)");
+        when(joinPoint.getArgs()).thenReturn(new Object[]{3L, body});
+        when(joinPoint.getSignature()).thenReturn(methodSignature);
+        when(joinPoint.proceed()).thenReturn("ok");
+
+        Object result = operationLogAspect.around(joinPoint, method.getAnnotation(OperationLog.class));
+
+        assertEquals("ok", result);
+        ArgumentCaptor<com.example.library.entity.OperationLog> captor =
+                ArgumentCaptor.forClass(com.example.library.entity.OperationLog.class);
+        verify(operationLogService).save(captor.capture());
+        String requestParams = captor.getValue().getRequestParams();
+        assertNotNull(requestParams);
+        assertTrue(requestParams.contains("body-title"));
+        assertTrue(requestParams.contains("newPassword"));
+        assertTrue(requestParams.contains("******"));
+        assertTrue(!requestParams.contains("new-password"));
     }
 
     @Test
@@ -142,6 +183,8 @@ class OperationLogAspectTest {
         private String title;
         private String password;
         private String accessToken;
+        private String refreshToken;
+        private String newPassword;
 
         public String getTitle() {
             return title;
@@ -166,11 +209,31 @@ class OperationLogAspectTest {
         public void setAccessToken(String accessToken) {
             this.accessToken = accessToken;
         }
+
+        public String getRefreshToken() {
+            return refreshToken;
+        }
+
+        public void setRefreshToken(String refreshToken) {
+            this.refreshToken = refreshToken;
+        }
+
+        public String getNewPassword() {
+            return newPassword;
+        }
+
+        public void setNewPassword(String newPassword) {
+            this.newPassword = newPassword;
+        }
     }
 
     private static class DemoController {
         @OperationLog("demo")
         public void demo() {
+        }
+
+        @OperationLog("update-password")
+        public void updatePassword(@PathVariable Long id, @RequestBody DemoRequest request) {
         }
     }
 }
